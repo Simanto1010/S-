@@ -1,0 +1,59 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Stores user settings and profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Connector": {
+      "title": "Connector",
+      "description": "Stores credentials and configuration for a connected service.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Owner UID" },
+        "platform": { "type": "string", "description": "e.g., YouTube, Notion, LinkedIn" },
+        "credentials": { "type": "object", "description": "Encrypted credentials or tokens" },
+        "status": { "type": "string", "enum": ["connected", "disconnected", "error"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "platform", "status"]
+    },
+    "AutomationTask": {
+      "title": "Automation Task",
+      "description": "Logs of AI-executed tasks.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "command": { "type": "string" },
+        "reasoning": { "type": "array", "items": { "type": "string" } },
+        "steps": { "type": "array", "items": { "type": "object" } },
+        "status": { "type": "string", "enum": ["pending", "running", "completed", "failed"] },
+        "result": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "command", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "UserProfile",
+      "description": "User profile data"
+    },
+    "/users/{uid}/connectors/{connectorId}": {
+      "schema": "Connector",
+      "description": "User's connected platforms"
+    },
+    "/users/{uid}/tasks/{taskId}": {
+      "schema": "AutomationTask",
+      "description": "History of automation tasks"
+    }
+  }
+}

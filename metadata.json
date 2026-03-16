@@ -1,0 +1,5 @@
+{
+  "name": "S+ (S Plus)",
+  "description": "Universal AI Connector Platform - Control and automate 100+ platforms from a single interface.",
+  "requestFramePermissions": ["camera", "microphone", "geolocation"]
+}
