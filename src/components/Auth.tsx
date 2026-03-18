@@ -23,7 +23,18 @@ export default function Auth() {
       await signInWithPopup(auth, googleProvider);
       toast.success('Successfully initialized system via Google');
     } catch (err: any) {
-      setError(err.message);
+      console.error('Auth Error:', err);
+      let message = err.message;
+      
+      if (err.code === 'auth/unauthorized-domain') {
+        message = `Domain Unauthorized: Please add "${window.location.hostname}" to your Firebase Console > Authentication > Settings > Authorized domains.`;
+      } else if (err.code === 'auth/popup-blocked') {
+        message = 'Popup Blocked: Please allow popups for this site to sign in with Google.';
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        message = 'Login cancelled.';
+      }
+      
+      setError(message);
       toast.error('Google initialization failed');
     } finally {
       setIsLoading(false);
@@ -44,8 +55,21 @@ export default function Auth() {
         toast.success('Account created. System initialized.');
       }
     } catch (err: any) {
-      setError(err.message);
-      toast.error(err.message);
+      console.error('Auth Error:', err);
+      let message = err.message;
+      
+      if (err.code === 'auth/unauthorized-domain') {
+        message = `Domain Unauthorized: Please add "${window.location.hostname}" to your Firebase Console > Authentication > Settings > Authorized domains.`;
+      } else if (err.code === 'auth/invalid-credential') {
+        message = 'Invalid email or password.';
+      } else if (err.code === 'auth/email-already-in-use') {
+        message = 'This email is already registered.';
+      } else if (err.code === 'auth/weak-password') {
+        message = 'Password should be at least 6 characters.';
+      }
+      
+      setError(message);
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -141,9 +165,24 @@ export default function Auth() {
             </div>
 
             {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-3 text-red-400 text-xs">
-                <AlertCircle size={16} />
-                {error}
+              <div className="space-y-4">
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3 text-red-400 text-xs">
+                  <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                  <div className="space-y-2">
+                    <p>{error}</p>
+                    {error.includes('Domain Unauthorized') && (
+                      <div className="p-2 bg-black/20 rounded-lg text-[10px] text-zinc-400 border border-white/5">
+                        <p className="font-bold text-zinc-300 mb-1 uppercase tracking-widest">How to fix:</p>
+                        <ol className="list-decimal ml-4 space-y-1">
+                          <li>Go to <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="text-cyan-400 hover:underline">Firebase Console</a></li>
+                          <li>Select your project: <strong>{auth.app.options.projectId}</strong></li>
+                          <li>Go to <strong>Authentication</strong> &gt; <strong>Settings</strong> &gt; <strong>Authorized domains</strong></li>
+                          <li>Add <strong>{window.location.hostname}</strong> to the list</li>
+                        </ol>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
 

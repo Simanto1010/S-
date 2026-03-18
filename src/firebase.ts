@@ -9,12 +9,25 @@ import {
   onSnapshot, serverTimestamp, getDocFromServer, updateDoc,
   deleteDoc, addDoc, getDocs, orderBy, limit
 } from 'firebase/firestore';
+import { toast } from 'sonner';
 import firebaseConfig from '../firebase-applet-config.json';
+
+// Validate Firebase configuration
+const requiredFields = ['apiKey', 'authDomain', 'projectId', 'appId'] as const;
+const missingFields = requiredFields.filter(field => !firebaseConfig[field as keyof typeof firebaseConfig]);
+
+if (missingFields.length > 0) {
+  console.error(`CRITICAL: Missing Firebase configuration fields: ${missingFields.join(', ')}`);
+  toast.error(`System Error: Missing Firebase configuration. Check your setup.`);
+}
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// Fallback for development/testing if auth fails or is not configured
+export const isAuthConfigured = missingFields.length === 0;
 
 export { 
   doc, getDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp, 
