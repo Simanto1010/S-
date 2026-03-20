@@ -27,6 +27,8 @@ import { VoiceOS } from './components/VoiceOS';
 import { PredictiveDashboard } from './components/PredictiveDashboard';
 import { TeamHub } from './components/TeamHub';
 import { orchestrateTask, getSmartSuggestions, getProactiveSuggestions, getDailyInsights, detectAutonomousOpportunities, generateAutonomousTask } from './services/aiService';
+import { ExecutionService } from './services/executionService';
+import { TemplateService } from './services/templateService';
 import { TeamService } from './services/teamService';
 import { NotificationService } from './services/notificationService';
 import { MemoryService } from './services/memoryService';
@@ -52,6 +54,7 @@ export default function App() {
   const [goals, setGoals] = useState<any[]>([]);
   const [executionSteps, setExecutionSteps] = useState<any[]>([]);
   const [currentPlan, setCurrentPlan] = useState<PlanType>(PlanType.FREE);
+  const [aiPlan, setAiPlan] = useState<any>(null);
   const [healthMetrics, setHealthMetrics] = useState<HealthStatus[]>([]);
   const [isHealthChecking, setIsHealthChecking] = useState(false);
   const [aiStatus, setAiStatus] = useState<'idle' | 'thinking' | 'executing' | 'healing'>('idle');
@@ -462,7 +465,7 @@ export default function App() {
     setCurrentTask(command);
     setResults([]);
     setExecutionSteps([]);
-    setCurrentPlan(null);
+    setAiPlan(null);
     setActiveTab('console');
     addLog(`Received command: "${command}"`, 'info');
     ActivityLogService.log(user.uid, `User command: ${command}`, 'info', 'ai');
@@ -536,147 +539,39 @@ export default function App() {
           id: step.id || `step-${index}-${Date.now()}`
         }))
       };
-      setCurrentPlan(planWithIds);
+      setAiPlan(planWithIds);
+      setExecutionSteps(planWithIds.steps.map((s: any) => ({ ...s, status: 'pending' })));
       
       addLog(`AI Reasoning: ${planWithIds.reasoning[0]}`, 'ai');
       addLog(`Execution Plan: ${planWithIds.summary}`, 'ai');
 
-      const newResults: any[] = [];
       setAiStatus('executing');
 
-      for (const step of planWithIds.steps) {
-        // Check Execution Limits
-        const canExecute = await SaaSService.checkLimit(user.uid, 'executions');
-        if (!canExecute) {
-          addLog("Execution limit reached. Please upgrade to PRO.", 'error');
-          toast.error("Execution Limit Reached");
-          break;
-        }
-
-        // Handle Conditional Logic
-        if (step.condition) {
-          addLog(`Evaluating condition: ${step.condition.if}`, 'ai');
-          
-          // Simple evaluation logic: check if previous step results contain certain keywords
-          // In a real app, this would be more robust
-          const context = newResults.map(r => r.content).join(' ');
-          const conditionMet = context.toLowerCase().includes(step.condition.if.toLowerCase()) || 
-                             (step.condition.if === 'success' && newResults.length > 0);
-
-          if (conditionMet) {
-            addLog(`Condition met. Executing: ${step.condition.then}`, 'success');
-            step.action = step.condition.then;
-          } else if (step.condition.else) {
-            addLog(`Condition not met. Executing: ${step.condition.else}`, 'info');
-            step.action = step.condition.else;
-          } else {
-            addLog(`Condition not met. Skipping step.`, 'info');
-            continue;
+      const executionResults = await ExecutionService.executePlan(planWithIds, user.uid, {
+        onLog: (msg, type) => addLog(msg, type as any),
+        onStepUpdate: (stepId, status, result, error) => {
+          setExecutionSteps(prev => prev.map(s => s.id === stepId ? { ...s, status: status as any, result, error } : s));
+          if (status === 'completed') {
+            SaaSService.trackUsage(user.uid, 'executions');
           }
-        }
+        },
+        onStatusChange: (status) => setAiStatus(status as any)
+      });
 
-        setExecutionSteps(prev => [...prev, { ...step, status: 'executing' }]);
-        
-        let success = false;
-        let attempt = 1;
-        const maxAttempts = 3;
-
-        while (!success && attempt <= maxAttempts) {
-          addLog(`Executing: ${step.action} on ${step.platform} (Attempt ${attempt})...`, 'info');
-          
-          // Check if it's a media generation step
-          if (step.action.toLowerCase().includes('generate') && (step.action.toLowerCase().includes('image') || step.action.toLowerCase().includes('video'))) {
-            addLog(`Triggering Creative Engine for: ${step.action}`, 'ai');
-            // For now, we'll just simulate a successful media generation trigger
-            // The user can manually trigger it from the Swipe Queue or we can auto-trigger
-            success = true;
-            await SaaSService.trackUsage(user.uid, 'ai_tasks');
-            setExecutionSteps(prev => prev.map(s => s.id === step.id ? { ...s, status: 'completed' } : s));
-            continue;
-          }
-
-          try {
-            const res = await ErrorRetryService.execute(async () => {
-              const response = await fetch('/api/execute', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                  command: step.action, 
-                  platform: step.platform, 
-                  attempt, 
-                  step,
-                  userId: user.uid 
-                })
-              });
-              if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-              return response;
-            }, {
-              maxRetries: 2,
-              delay: 1000,
-              context: `Execution: ${step.action}`
-            });
-
-            const data = await res.json();
-            
-            if (res.ok && data.status === 'success') {
-              addLog(data.message, 'success');
-              ActivityLogService.log(user.uid, `Step success: ${step.action}`, 'success', 'connector');
-              await SaaSService.trackUsage(user.uid, 'executions');
-              
-              setExecutionSteps(prev => prev.map(s => s.id === step.id ? { ...s, status: 'completed', result: data.result } : s));
-              
-              if (data.result) {
-                newResults.push({
-                  id: Math.random().toString(36).substr(2, 9),
-                  type: step.platform === 'YouTube' ? 'video' : 'link',
-                  title: `${step.platform} Result`,
-                  content: data.result.summary || data.result.caption || data.message,
-                  thumbnail: data.result.thumbnail,
-                  url: data.result.url,
-                  platform: step.platform
-                });
-              }
-              success = true;
-            } else {
-              throw new Error(data.message || 'Execution failed');
-            }
-          } catch (error: any) {
-            setAiStatus('healing');
-            const errorMessage = error.message || 'Error';
-            addLog(`${errorMessage}. Recovery: Retrying...`, 'error');
-            ActivityLogService.log(user.uid, `Step failed: ${step.action}. Error: ${errorMessage}`, 'error', 'system');
-            
-            setDecisionLogs(prev => [{
-              id: Math.random().toString(36).substr(2, 9),
-              timestamp: new Date(),
-              type: 'healing',
-              message: `Detected failure in ${step.platform}. Triggering self-healing: Retrying...`
-            }, ...prev]);
-
-            attempt++;
-            
-            setExecutionSteps(prev => prev.map(s => s.id === step.id ? { 
-              ...s, 
-              status: 'retrying', 
-              error: errorMessage,
-              recovery: plan.selfHealing[error.code] || 'Retrying with alternative parameters...'
-            } : s));
-
-            if (attempt <= maxAttempts) {
-              addLog(`Self-healing: ${plan.selfHealing[error.code] || 'Retrying with alternative parameters...'}`, 'ai');
-              await new Promise(r => setTimeout(r, 2000));
-              setAiStatus('executing');
-            }
-          }
-        }
-
-        if (!success) {
-          addLog(`Step failed after ${maxAttempts} attempts. Aborting sequence.`, 'error');
-          ActivityLogService.log(user.uid, `Task sequence aborted: ${command}`, 'error', 'ai');
-          setExecutionSteps(prev => prev.map(s => s.id === step.id ? { ...s, status: 'failed' } : s));
-          break;
-        }
-      }
+      const newResults = executionResults
+        .filter(r => r.status === 'success' || r.status === 'success_via_plan_b')
+        .map(r => {
+          const step = planWithIds.steps.find((s: any) => s.id === r.stepId);
+          return {
+            id: Math.random().toString(36).substr(2, 9),
+            type: step?.platform === 'YouTube' ? 'video' : 'link',
+            title: `${step?.platform || 'Task'} Result`,
+            content: r.result?.summary || r.result?.caption || r.result?.message || 'Task completed',
+            thumbnail: r.result?.thumbnail,
+            url: r.result?.url,
+            platform: step?.platform
+          };
+        });
 
       setResults(newResults);
       
@@ -734,6 +629,22 @@ export default function App() {
   const handleIgnoreSuggestion = (id: string) => {
     setProactiveSuggestions(prev => prev.filter(s => s.id !== id));
     toast.info('Suggestion dismissed');
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!user || !aiPlan || !currentTask) return;
+    try {
+      await TemplateService.saveAsTemplate(
+        `Automation: ${currentTask.substring(0, 30)}...`,
+        aiPlan.summary,
+        currentTask,
+        aiPlan.steps,
+        user.uid
+      );
+      toast.success('Task saved as automation template');
+    } catch (err) {
+      toast.error('Failed to save template');
+    }
   };
 
   if (loading) {
@@ -947,8 +858,19 @@ export default function App() {
               logs={logs} 
               steps={executionSteps} 
               isExecuting={isProcessing} 
-              plan={currentPlan} 
+              plan={aiPlan} 
             />
+            {aiPlan && !isProcessing && (
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                onClick={handleSaveTemplate}
+                className="mt-4 flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-white/60 transition-colors"
+              >
+                <Layers className="w-3 h-3" />
+                Save as Automation Template
+              </motion.button>
+            )}
             <ResultPanel results={results} />
           </div>
         )}

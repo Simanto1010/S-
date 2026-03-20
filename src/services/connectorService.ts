@@ -73,7 +73,7 @@ export class ConnectorService {
     // });
     
     // Simulated success
-    return { success: true, executionId: Math.random().toString(36).substr(2, 9) };
+    return { success: true, executionId: Math.random().toString(36).substr(2, 9), error: undefined };
   }
 
   /**

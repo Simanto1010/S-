@@ -2,6 +2,7 @@ import { db, auth, collection, addDoc, serverTimestamp, handleFirestoreError, Op
 import { SystemHealthService } from "./systemHealthService";
 import { NotificationService } from "./notificationService";
 import { VaultService } from "./vaultService";
+import { ConnectorService } from "./connectorService";
 import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
@@ -24,6 +25,12 @@ export interface ExecutionTask {
   error?: string;
   riskLevel: 'low' | 'high';
   autonomous: boolean;
+}
+
+export interface ExecutionOptions {
+  onLog?: (message: string, type: 'info' | 'success' | 'error' | 'ai') => void;
+  onStepUpdate?: (stepId: string, status: string, result?: any, error?: string) => void;
+  onStatusChange?: (status: string) => void;
 }
 
 export class ExecutionService {
@@ -92,23 +99,24 @@ export class ExecutionService {
 
     this.emitLog(task.userId, `Authenticating with ${task.platform} API...`);
     
-    // Real API execution logic: In a real app, this would use axios or fetch
-    // For this prototype, we simulate the actual platform behavior
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    if (task.platform === 'Slack') {
-      if (task.action === 'postMessage') {
-        return { ok: true, channel: task.params.channel, ts: Date.now().toString() };
-      }
+    // Use ConnectorService to trigger the actual workflow
+    const result = await ConnectorService.triggerWorkflow(task.action, {
+      ...task.params,
+      platform: task.platform,
+      apiKey
+    });
+
+    if (!result.success) {
+      throw new Error(`Connector API failed: ${result.error || 'Unknown error'}`);
     }
-    
-    return { status: 'completed', timestamp: new Date().toISOString(), platform: task.platform };
+
+    return result;
   }
 
   private static async executeBrowser(task: ExecutionTask) {
     // In a real SaaS, this would use a headless browser pool (Playwright/Puppeteer)
     // Here we simulate the automation steps with detailed logs
-    this.emitLog(task.userId, `Launching headless browser instance...`);
+    this.emitLog(task.userId, `Launching headless browser instance for ${task.platform}...`);
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     this.emitLog(task.userId, `Navigating to https://${task.platform.toLowerCase()}.com/login...`);
@@ -125,6 +133,7 @@ export class ExecutionService {
     return { 
       screenshot: `https://picsum.photos/seed/${task.action}/800/600`, 
       url: `https://${task.platform.toLowerCase()}.com/dashboard`,
+      summary: `Successfully performed ${task.action} on ${task.platform} via browser automation.`,
       steps: 4,
       duration: '5.5s'
     };
@@ -230,6 +239,146 @@ export class ExecutionService {
     }
     
     throw new Error(`Execution failed and self-healing could not resolve it: ${error}`);
+  }
+
+  static async executePlan(plan: any, userId: string, options?: ExecutionOptions): Promise<any[]> {
+    const results: any[] = [];
+    const completedSteps: Set<string> = new Set();
+    const stepResults: Map<string, any> = new Map();
+
+    const executeStep = async (step: any) => {
+      // Check dependencies
+      if (step.dependsOn && step.dependsOn.length > 0) {
+        for (const depId of step.dependsOn) {
+          if (!completedSteps.has(depId)) {
+            // Wait for dependency (this is a simple poll, could be improved with events)
+            await new Promise(resolve => {
+              const interval = setInterval(() => {
+                if (completedSteps.has(depId)) {
+                  clearInterval(interval);
+                  resolve(null);
+                }
+              }, 100);
+            });
+          }
+        }
+      }
+
+      // Check condition if present
+      if (step.condition) {
+        // Simple condition evaluation (can be expanded)
+        const conditionMet = this.evaluateCondition(step.condition, stepResults);
+        if (!conditionMet) {
+          const skipMsg = `Skipping step ${step.id}: Condition not met (${step.condition.if})`;
+          this.emitLog(userId, skipMsg, 'info');
+          options?.onLog?.(skipMsg, 'info');
+          options?.onStepUpdate?.(step.id, 'skipped');
+          completedSteps.add(step.id);
+          return;
+        }
+      }
+
+      options?.onStepUpdate?.(step.id, 'executing');
+      const task: ExecutionTask = {
+        userId,
+        type: this.determineExecutionType(step.platform),
+        platform: step.platform,
+        action: step.action,
+        params: step.params,
+        status: 'pending',
+        riskLevel: this.getRiskLevel(step.action),
+        autonomous: true
+      };
+
+      try {
+        const startMsg = `Executing: ${step.action} on ${step.platform}...`;
+        options?.onLog?.(startMsg, 'info');
+        
+        const result = await this.execute(task);
+        stepResults.set(step.id, result);
+        results.push({ stepId: step.id, status: 'success', result });
+        
+        options?.onStepUpdate?.(step.id, 'completed', result);
+        options?.onLog?.(`Step ${step.id} completed successfully.`, 'success');
+      } catch (error: any) {
+        const failMsg = `Step ${step.id} failed: ${error.message}. Checking Plan B...`;
+        this.emitLog(userId, failMsg, 'error');
+        options?.onLog?.(failMsg, 'error');
+        
+        if (step.planB) {
+          const planBMsg = `Executing Plan B for ${step.id}: ${step.planB.action} on ${step.planB.platform}`;
+          this.emitLog(userId, planBMsg, 'info');
+          options?.onLog?.(planBMsg, 'info');
+          options?.onStepUpdate?.(step.id, 'retrying');
+
+          const planBTask: ExecutionTask = {
+            userId,
+            type: this.determineExecutionType(step.planB.platform),
+            platform: step.planB.platform,
+            action: step.planB.action,
+            params: step.planB.params || {},
+            status: 'pending',
+            riskLevel: this.getRiskLevel(step.planB.action),
+            autonomous: true
+          };
+          try {
+            const bResult = await this.execute(planBTask);
+            stepResults.set(step.id, bResult);
+            results.push({ stepId: step.id, status: 'success_via_plan_b', result: bResult });
+            options?.onStepUpdate?.(step.id, 'completed', bResult);
+          } catch (bError: any) {
+            results.push({ stepId: step.id, status: 'failed', error: bError.message });
+            options?.onStepUpdate?.(step.id, 'failed', null, bError.message);
+          }
+        } else {
+          results.push({ stepId: step.id, status: 'failed', error: error.message });
+          options?.onStepUpdate?.(step.id, 'failed', null, error.message);
+        }
+      } finally {
+        completedSteps.add(step.id);
+      }
+    };
+
+    // Group steps by parallelizability
+    const parallelSteps = plan.steps.filter((s: any) => s.parallelizable && (!s.dependsOn || s.dependsOn.length === 0));
+    const sequentialSteps = plan.steps.filter((s: any) => !s.parallelizable || (s.dependsOn && s.dependsOn.length > 0));
+
+    // Execute initial parallel steps
+    const parallelPromises = parallelSteps.map((s: any) => executeStep(s));
+    
+    // Execute sequential steps (which will wait for their own dependencies)
+    const sequentialPromises = sequentialSteps.map((s: any) => executeStep(s));
+
+    await Promise.all([...parallelPromises, ...sequentialPromises]);
+
+    return results;
+  }
+
+  private static determineExecutionType(platform: string): ExecutionType {
+    const apiPlatforms = ['Slack', 'GitHub', 'Twitter', 'Stripe', 'Twilio', 'SendGrid'];
+    const browserPlatforms = ['LinkedIn', 'Facebook', 'Instagram', 'TikTok'];
+    
+    if (apiPlatforms.some(p => platform.toLowerCase().includes(p.toLowerCase()))) return ExecutionType.API;
+    if (browserPlatforms.some(p => platform.toLowerCase().includes(p.toLowerCase()))) return ExecutionType.BROWSER;
+    return ExecutionType.LOCAL;
+  }
+
+  private static evaluateCondition(condition: any, previousResults: Map<string, any>): boolean {
+    // In a real implementation, this would use a sandbox or safe evaluator
+    // For this prototype, we check if the 'if' string mentions a previous step result
+    try {
+      if (condition.if.includes('step_')) {
+        const stepId = condition.if.match(/step_\d+/)?.[0];
+        if (stepId) {
+          const result = previousResults.get(stepId);
+          // Simple check: if result exists and is truthy
+          return !!result;
+        }
+      }
+      return true; // Default to true if we can't parse
+    } catch (e) {
+      return true;
+    }
   }
 
   static getRiskLevel(action: string): 'low' | 'high' {

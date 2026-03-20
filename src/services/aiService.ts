@@ -4,6 +4,7 @@ import { NotificationService } from "./notificationService";
 import { SystemHealthService } from "./systemHealthService";
 import { ActivityLogService } from "./activityLogService";
 import { ErrorRetryService } from "./errorRetryService";
+import { TemplateService } from "./templateService";
 import { auth } from "../firebase";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
@@ -54,12 +55,15 @@ const callAIWithRetry = async (params: any, retries = 3, delay = 2000): Promise<
 
       try {
         const response = await ai.models.generateContent(params);
+        // Reset quota flag on success
+        SmartRouter.setQuotaLow(false);
         return response;
       } catch (error: any) {
         if (error?.status === 'RESOURCE_EXHAUSTED' || error?.code === 429) {
           // Set a 2-minute global cooldown if quota is exhausted
           console.error(`[AI Core] Quota exhausted. Entering 2-minute cooldown.`);
           globalCooldownUntil = Date.now() + 120000;
+          SmartRouter.setQuotaLow(true);
           throw error; // Let ErrorRetryService handle the retry or failure
         }
         throw error;
@@ -82,6 +86,30 @@ const callAIWithRetry = async (params: any, retries = 3, delay = 2000): Promise<
 export const orchestrateTask = async (command: string, context: { history?: any[], connectors?: string[], vault?: string[], goals?: string[] } = {}) => {
   const startTime = Date.now();
   const userId = auth.currentUser?.uid || 'system';
+  
+  // Check Cache First (Section 5)
+  const cachedResult = SmartRouter.getCachedResult(command);
+  if (cachedResult) {
+    ActivityLogService.log(userId, `Cache hit for task: ${command}`, 'info', 'ai');
+    return cachedResult;
+  }
+
+  // Check Templates (Section 6)
+  const matchingTemplate = await TemplateService.findMatchingTemplate(command, userId);
+  if (matchingTemplate) {
+    ActivityLogService.log(userId, `Template match found: ${matchingTemplate.name}`, 'info', 'ai');
+    const templateResult = {
+      intent: matchingTemplate.trigger,
+      summary: matchingTemplate.description,
+      steps: matchingTemplate.steps,
+      reasoning: ["Using pre-built automation template for efficiency."],
+      modelUsed: "Template Engine",
+      selfHealing: {},
+      memoryInsight: "This is a recurring task optimized via templates."
+    };
+    return templateResult;
+  }
+
   ActivityLogService.log(userId, `Orchestrating task: ${command}`, 'info', 'ai');
   
   // Perform Semantic Search in Long-Term Memory
@@ -102,12 +130,11 @@ export const orchestrateTask = async (command: string, context: { history?: any[
     ? `Strategic Goals (Goal-Driven Autonomy): ${context.goals.join(', ')}`
     : '';
   
-  // 5. Decision Engine Logic: Decide which model to use based on task complexity
-  const isCreativeTask = /generate|create|write|design|caption|image|video/i.test(command);
-  const modelToUse = isCreativeTask ? "gemini-3.1-flash-lite-preview" : "gemini-3.1-pro-preview";
+  // Smart Routing (Section 4)
+  const { model: modelToUse, mode } = await SmartRouter.route(command);
 
   if (userId) {
-    ActivityLogService.log(userId, `AI Orchestration started: ${command.substring(0, 50)}...`, 'info', 'ai', { model: modelToUse });
+    ActivityLogService.log(userId, `AI Orchestration started (${mode} mode): ${command.substring(0, 50)}...`, 'info', 'ai', { model: modelToUse });
   }
 
   // Check if the command requires web intelligence
@@ -115,9 +142,16 @@ export const orchestrateTask = async (command: string, context: { history?: any[
 
   try {
     const response = await callAIWithRetry({
-      model: modelToUse,
+      model: modelToUse as any,
       contents: `You are the S+ AI CORE, the central brain of the S+ Universal AI Connector Platform.
       Your role is to act as an orchestration layer above external tools.
+      
+      ARCHITECTURAL DIRECTIVE (CONNECTOR-FIRST):
+      1. AI = Planning Only.
+      2. Connectors = Execution.
+      3. Break down the command into discrete, executable steps using available connectors.
+      4. If multiple platforms are needed, trigger them in parallel or sequence.
+      5. Always provide a 'planB' for critical steps.
       
       Current Context:
       ${memoryContext}
@@ -131,7 +165,6 @@ export const orchestrateTask = async (command: string, context: { history?: any[
       - Think step-by-step about the user's intent.
       - Analyze the strategic goals and how this command aligns with them.
       - Consider past successes and failures from memory.
-      - IMPORTANT: If the memory context shows a past preference (e.g., 'professional tone'), acknowledge it in your reasoning.
       
       Phase 2: Multi-Agent Collaboration
       - Analyst Agent: Evaluate data requirements and platform health.
@@ -142,13 +175,7 @@ export const orchestrateTask = async (command: string, context: { history?: any[
       - Break the command into logical, executable steps.
       - For each step, decide the best platform and tool.
       - If the task requires media generation, include a step for 'image' or 'video' generation.
-      - If the task requires conditional logic (e.g., "If X, then Y"), define it in the 'condition' field of the step.
-      
-      Phase 4: Decision Intelligence
-      - Use past data to optimize platform selection and timing.
-      
-      Phase 5: Self-Awareness (System Monitor)
-      - Provide self-healing instructions for each step in case of failure.
+      - Identify dependencies between steps using 'dependsOn'.
       
       Return a JSON object with:
       - intent: string (Classified intent)
@@ -161,6 +188,7 @@ export const orchestrateTask = async (command: string, context: { history?: any[
           expectedOutput: string,
           priority: number,
           parallelizable: boolean,
+          dependsOn: string[] (IDs of steps that must complete first),
           planB: string (Alternative action if this step fails),
           condition?: {
             if: string (The condition to check),
@@ -193,6 +221,7 @@ export const orchestrateTask = async (command: string, context: { history?: any[
                   expectedOutput: { type: Type.STRING },
                   priority: { type: Type.NUMBER },
                   parallelizable: { type: Type.BOOLEAN },
+                  dependsOn: { type: Type.ARRAY, items: { type: Type.STRING } },
                   planB: { type: Type.STRING },
                   riskLevel: { type: Type.STRING, enum: ['low', 'high'], description: "Classify the risk of this action. 'high' for destructive or public-facing actions." },
                   condition: {
@@ -218,6 +247,9 @@ export const orchestrateTask = async (command: string, context: { history?: any[
 
     const result = safeJsonParse(response.text, {});
     
+    // Cache the result (Section 5)
+    SmartRouter.setCache(command, result);
+
     // Save this task to memory for future semantic search
     MemoryService.saveMemory(`Command: ${command} | Summary: ${result.summary}`, {
       type: 'task',
@@ -229,13 +261,32 @@ export const orchestrateTask = async (command: string, context: { history?: any[
       cpu: Math.floor(Math.random() * 20) + 10,
       latency: Date.now() - startTime,
       successRate: 100,
-      activeTasks: result.steps.length
+      activeTasks: result.steps?.length || 0
     });
 
     return { ...result, modelUsed: modelToUse };
   } catch (error) {
     SystemHealthService.logError('AI Core Orchestration', error instanceof Error ? error.message : String(error), { command });
-    throw error;
+    
+    // Fallback to local heuristic if AI fails (Section 7)
+    return {
+      analysis: "AI Overload - Switching to Local Heuristic Mode",
+      steps: [
+        {
+          id: "fallback_1",
+          platform: "system",
+          action: "notify",
+          params: { message: "AI is currently at capacity. Executing basic local fallback." },
+          description: "System notification fallback",
+          priority: 1,
+          parallelizable: false,
+          dependsOn: []
+        }
+      ],
+      summary: "Local fallback execution triggered due to AI unavailability.",
+      reasoning: "API Quota or Network Error",
+      modelUsed: "local-heuristic"
+    };
   }
 };
 
@@ -693,12 +744,70 @@ export const selfHeal = async (taskId: string, error: string, currentStep: any) 
     const response = await callAIWithRetry({
       model: "gemini-3.1-flash-lite-preview",
       contents: prompt,
-      config: { responseMimeType: "application/json" }
+      config: {
+        responseMimeType: "application/json"
+      }
     });
 
-    return safeJsonParse(response.text, {});
-  } catch (err) {
-    console.error('Self-healing analysis failed', err);
-    return null;
+    return safeJsonParse(response.text, { analysis: "Failed to analyze", recoveryStep: null, isCritical: true });
+  } catch (error) {
+    SystemHealthService.logError('Self-Heal AI', error instanceof Error ? error.message : String(error));
+    return { analysis: "AI Analysis failed", recoveryStep: null, isCritical: true };
   }
 };
+
+/**
+ * SECTION 4 — SMART ROUTER & CACHE SYSTEM
+ * Automatically decides task complexity and manages AI usage.
+ */
+class SmartRouter {
+  private static cache: Map<string, { result: any, timestamp: number }> = new Map();
+  private static CACHE_TTL = 3600000; // 1 hour
+  private static isQuotaLow = false;
+
+  static setQuotaLow(low: boolean) {
+    this.isQuotaLow = low;
+  }
+
+  static async route(command: string): Promise<{ model: string, mode: 'full' | 'light' | 'local' }> {
+    const complexity = this.analyzeComplexity(command);
+    
+    // Simple tasks or low quota -> use light model
+    if (complexity === 'low' || this.isQuotaLow) {
+      return { model: "gemini-3.1-flash-lite-preview", mode: 'light' };
+    }
+    
+    // Medium tasks -> light model if it's not a creative task
+    if (complexity === 'medium' && !/generate|create|write|design|caption|image|video/i.test(command)) {
+      return { model: "gemini-3.1-flash-lite-preview", mode: 'light' };
+    }
+
+    // High complexity or creative tasks -> full model
+    return { model: "gemini-3.1-pro-preview", mode: 'full' };
+  }
+
+  private static analyzeComplexity(command: string): 'low' | 'medium' | 'high' {
+    const cmd = command.toLowerCase();
+    const highKeywords = ['analyze', 'strategy', 'complex', 'multiple', 'orchestrate', 'plan', 'optimize', 'refine'];
+    const lowKeywords = ['send', 'post', 'check', 'get', 'list', 'simple', 'notify', 'alert'];
+    
+    const highCount = highKeywords.filter(k => cmd.includes(k)).length;
+    const lowCount = lowKeywords.filter(k => cmd.includes(k)).length;
+
+    if (highCount > 1 || cmd.length > 100) return 'high';
+    if (lowCount > 0 && highCount === 0) return 'low';
+    return 'medium';
+  }
+
+  static getCachedResult(command: string): any | null {
+    const cached = this.cache.get(command);
+    if (cached && (Date.now() - cached.timestamp < this.CACHE_TTL)) {
+      return cached.result;
+    }
+    return null;
+  }
+
+  static setCache(command: string, result: any) {
+    this.cache.set(command, { result, timestamp: Date.now() });
+  }
+}
