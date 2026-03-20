@@ -7,6 +7,7 @@ import {
 } from '../firebase';
 import { Globe, Mail, Lock, User, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { ActivityLogService } from '../services/activityLogService';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -20,7 +21,10 @@ export default function Auth() {
     setIsLoading(true);
     setError(null);
     try {
-      await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result.user) {
+        ActivityLogService.log(result.user.uid, 'User logged in via Google', 'success', 'auth');
+      }
       toast.success('Successfully initialized system via Google');
     } catch (err: any) {
       console.error('Auth Error:', err);
@@ -47,11 +51,15 @@ export default function Auth() {
     setError(null);
     try {
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
+        const result = await signInWithEmailAndPassword(auth, email, password);
+        if (result.user) {
+          ActivityLogService.log(result.user.uid, 'User logged in via Email', 'success', 'auth');
+        }
         toast.success('Access granted. Welcome back.');
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(userCredential.user, { displayName: name });
+        ActivityLogService.log(userCredential.user.uid, 'New user registered', 'success', 'auth');
         toast.success('Account created. System initialized.');
       }
     } catch (err: any) {

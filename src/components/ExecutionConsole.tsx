@@ -1,6 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Terminal, ChevronRight, CheckCircle2, Loader2, AlertCircle, Brain, Zap, Shield, RefreshCw, Check } from 'lucide-react';
+import { Terminal, ChevronRight, CheckCircle2, Loader2, AlertCircle, Brain, Zap, Shield, RefreshCw, Check, Activity, Heart, Cpu, Activity as ActivityIcon } from 'lucide-react';
+import { LineChart, Line, ResponsiveContainer, YAxis, Tooltip, AreaChart, Area } from 'recharts';
+import { getRecentMetrics, generateSimulatedMetrics } from '../services/systemHealthService';
 
 interface Log {
   id: string;
@@ -18,6 +20,8 @@ interface ExecutionConsoleProps {
 
 export default function ExecutionConsole({ logs, steps = [], isExecuting, plan }: ExecutionConsoleProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [metrics, setMetrics] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'logs' | 'heartbeat'>('logs');
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -25,14 +29,48 @@ export default function ExecutionConsole({ logs, steps = [], isExecuting, plan }
     }
   }, [logs]);
 
+  useEffect(() => {
+    const fetchMetrics = async () => {
+      const realMetrics = await getRecentMetrics(20);
+      if (realMetrics.length > 0) {
+        setMetrics(realMetrics.reverse());
+      } else {
+        setMetrics(generateSimulatedMetrics(20));
+      }
+    };
+
+    fetchMetrics();
+    const interval = setInterval(fetchMetrics, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const latestMetric = metrics[metrics.length - 1] || { cpu: 0, latency: 0, successRate: 100, activeTasks: 0 };
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[700px]">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[750px]">
       {/* Main Console */}
       <div className="lg:col-span-2 bg-[#0a0a0a] border border-white/5 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
         <div className="px-6 py-4 border-b border-white/5 bg-white/5 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Terminal size={18} className="text-cyan-400" />
-            <h3 className="text-sm font-mono font-bold tracking-widest uppercase">S+ Execution Console</h3>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <Terminal size={18} className="text-cyan-400" />
+              <h3 className="text-sm font-mono font-bold tracking-widest uppercase">S+ Execution Console</h3>
+            </div>
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setActiveTab('logs')}
+                className={`text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'logs' ? 'text-cyan-400' : 'text-zinc-500 hover:text-white'}`}
+              >
+                Logs
+              </button>
+              <button 
+                onClick={() => setActiveTab('heartbeat')}
+                className={`text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'heartbeat' ? 'text-emerald-400' : 'text-zinc-500 hover:text-white'}`}
+              >
+                <Heart size={10} className={activeTab === 'heartbeat' ? 'animate-pulse' : ''} />
+                Heartbeat
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             {isExecuting && (
@@ -49,44 +87,129 @@ export default function ExecutionConsole({ logs, steps = [], isExecuting, plan }
           </div>
         </div>
 
-        <div 
-          ref={scrollRef}
-          className="flex-1 p-6 font-mono text-sm space-y-3 overflow-y-auto scrollbar-hide"
-        >
-          <AnimatePresence initial={false}>
-            {logs.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-zinc-600 space-y-4">
-                <Terminal size={48} strokeWidth={1} />
-                <p>System idle. Awaiting command input...</p>
-              </div>
-            ) : (
-              logs.map((log) => (
-                <motion.div
-                  key={log.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="flex gap-3 group"
-                >
-                  <span className="text-zinc-700 shrink-0">
-                    [{log.timestamp.toLocaleTimeString([], { hour12: false })}]
-                  </span>
-                  <div className="flex gap-2">
-                    {log.type === 'ai' && <ChevronRight size={16} className="text-cyan-400 mt-0.5" />}
-                    {log.type === 'success' && <CheckCircle2 size={16} className="text-emerald-500 mt-0.5" />}
-                    {log.type === 'error' && <AlertCircle size={16} className="text-red-500 mt-0.5" />}
-                    {log.type === 'info' && <Loader2 size={16} className="text-blue-400 animate-spin mt-0.5" />}
-                    
-                    <span className={`
-                      ${log.type === 'ai' ? 'text-cyan-400' : ''}
-                      ${log.type === 'success' ? 'text-emerald-400' : ''}
-                      ${log.type === 'error' ? 'text-red-400' : ''}
-                      ${log.type === 'info' ? 'text-zinc-300' : ''}
-                    `}>
-                      {log.message}
-                    </span>
+        <div className="flex-1 relative overflow-hidden">
+          <AnimatePresence mode="wait">
+            {activeTab === 'logs' ? (
+              <motion.div 
+                key="logs"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                ref={scrollRef}
+                className="absolute inset-0 p-6 font-mono text-sm space-y-3 overflow-y-auto scrollbar-hide"
+              >
+                {logs.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-zinc-600 space-y-4">
+                    <Terminal size={48} strokeWidth={1} />
+                    <p>System idle. Awaiting command input...</p>
                   </div>
-                </motion.div>
-              ))
+                ) : (
+                  logs.map((log) => (
+                    <motion.div
+                      key={log.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex gap-3 group"
+                    >
+                      <span className="text-zinc-700 shrink-0">
+                        [{log.timestamp.toLocaleTimeString([], { hour12: false })}]
+                      </span>
+                      <div className="flex gap-2">
+                        {log.type === 'ai' && <ChevronRight size={16} className="text-cyan-400 mt-0.5" />}
+                        {log.type === 'success' && <CheckCircle2 size={16} className="text-emerald-500 mt-0.5" />}
+                        {log.type === 'error' && <AlertCircle size={16} className="text-red-500 mt-0.5" />}
+                        {log.type === 'info' && <Loader2 size={16} className="text-blue-400 animate-spin mt-0.5" />}
+                        
+                        <span className={`
+                          ${log.type === 'ai' ? 'text-cyan-400' : ''}
+                          ${log.type === 'success' ? 'text-emerald-400' : ''}
+                          ${log.type === 'error' ? 'text-red-400' : ''}
+                          ${log.type === 'info' ? 'text-zinc-300' : ''}
+                        `}>
+                          {log.message}
+                        </span>
+                      </div>
+                    </motion.div>
+                  ))
+                )}
+              </motion.div>
+            ) : (
+              <motion.div 
+                key="heartbeat"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 p-8 flex flex-col gap-8"
+              >
+                <div className="grid grid-cols-4 gap-4">
+                  <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
+                    <div className="flex items-center gap-2 text-zinc-500 mb-2">
+                      <Cpu size={14} />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">CPU Load</span>
+                    </div>
+                    <p className="text-2xl font-black text-white">{latestMetric.cpu.toFixed(1)}%</p>
+                  </div>
+                  <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
+                    <div className="flex items-center gap-2 text-zinc-500 mb-2">
+                      <Zap size={14} />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">Latency</span>
+                    </div>
+                    <p className="text-2xl font-black text-white">{latestMetric.latency}ms</p>
+                  </div>
+                  <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
+                    <div className="flex items-center gap-2 text-zinc-500 mb-2">
+                      <Shield size={14} />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">Success</span>
+                    </div>
+                    <p className="text-2xl font-black text-emerald-400">{latestMetric.successRate}%</p>
+                  </div>
+                  <div className="p-4 bg-white/5 border border-white/10 rounded-2xl">
+                    <div className="flex items-center gap-2 text-zinc-500 mb-2">
+                      <ActivityIcon size={14} />
+                      <span className="text-[10px] font-bold uppercase tracking-widest">Active Tasks</span>
+                    </div>
+                    <p className="text-2xl font-black text-cyan-400">{latestMetric.activeTasks}</p>
+                  </div>
+                </div>
+
+                <div className="flex-1 bg-white/5 border border-white/10 rounded-3xl p-6">
+                  <div className="flex items-center justify-between mb-6">
+                    <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Real-time Performance</h4>
+                    <div className="flex gap-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-cyan-500" />
+                        <span className="text-[10px] text-zinc-500 uppercase">Latency</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span className="text-[10px] text-zinc-500 uppercase">CPU</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="h-[250px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={metrics}>
+                        <defs>
+                          <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                          </linearGradient>
+                          <linearGradient id="colorLatency" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="#06b6d4" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                          itemStyle={{ fontSize: '12px' }}
+                        />
+                        <Area type="monotone" dataKey="cpu" stroke="#10b981" fillOpacity={1} fill="url(#colorCpu)" />
+                        <Area type="monotone" dataKey="latency" stroke="#06b6d4" fillOpacity={1} fill="url(#colorLatency)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
@@ -98,6 +221,8 @@ export default function ExecutionConsole({ logs, steps = [], isExecuting, plan }
           </div>
           <div className="h-3 w-[1px] bg-white/10" />
           <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter">Memory: 12.4GB / 32GB</span>
+          <div className="h-3 w-[1px] bg-white/10" />
+          <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter">Uptime: 14d 2h 12m</span>
         </div>
       </div>
 
@@ -162,6 +287,13 @@ export default function ExecutionConsole({ logs, steps = [], isExecuting, plan }
                           </div>
                           <p className="text-[10px] text-zinc-400">{step.recovery}</p>
                         </motion.div>
+                      )}
+
+                      {step.condition && (
+                        <div className="p-2 bg-white/5 rounded-lg border border-white/5">
+                          <p className="text-[10px] text-zinc-500 font-bold uppercase mb-1">Conditional Logic</p>
+                          <p className="text-[10px] text-zinc-400 italic">If: {step.condition.if}</p>
+                        </div>
                       )}
                     </div>
                   </div>

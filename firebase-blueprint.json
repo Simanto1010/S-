@@ -125,6 +125,146 @@
         "status": { "type": "string", "enum": ["new", "processed", "ignored"] }
       },
       "required": ["userId", "type", "title", "status"]
+    },
+    "Workspace": {
+      "title": "Team Workspace",
+      "description": "A shared workspace for team collaboration.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "members": { "type": "array", "description": "List of user UIDs and their roles" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "ownerId"]
+    },
+    "Invitation": {
+      "title": "Workspace Invitation",
+      "description": "An invitation to join a workspace.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "editor"] },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "invitedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "email", "role", "status"]
+    },
+    "TeamActivity": {
+      "title": "Team Activity Feed",
+      "description": "Logs of team actions like task approvals.",
+      "type": "object",
+      "properties": {
+        "workspaceId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workspaceId", "userId", "action"]
+    },
+    "AnalyticsData": {
+      "title": "Platform Analytics",
+      "description": "Historical and predicted performance data.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "platform": { "type": "string" },
+        "metric": { "type": "string" },
+        "value": { "type": "number" },
+        "type": { "type": "string", "enum": ["actual", "predicted"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "platform", "metric", "value", "type"]
+    },
+    "MemoryEntry": {
+      "title": "AI Memory",
+      "description": "Long-term semantic memory for AI personalization.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "content": { "type": "string" },
+        "embedding": { "type": "array" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["userId", "content", "embedding"]
+    },
+    "SystemError": {
+      "title": "System Error Log",
+      "description": "Logs of system errors for debugging and AI auto-fixing.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "service": { "type": "string" },
+        "error": { "type": "string" },
+        "context": { "type": "object" },
+        "retryCount": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "resolved": { "type": "boolean" }
+      },
+      "required": ["userId", "service", "error", "timestamp"]
+    },
+    "SystemMetric": {
+      "title": "System Health Metric",
+      "description": "Real-time performance metrics for system monitoring.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "cpu": { "type": "number" },
+        "latency": { "type": "number" },
+        "successRate": { "type": "number" },
+        "activeTasks": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "cpu", "latency", "successRate", "timestamp"]
+    },
+    "Subscription": {
+      "title": "User Subscription",
+      "description": "SaaS subscription details and plan information.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "plan": { "type": "string", "enum": ["free", "pro"] },
+        "status": { "type": "string", "enum": ["active", "canceled", "past_due", "pending_verification"] },
+        "paymentMethod": { "type": "string", "enum": ["upi"] },
+        "currentPeriodEnd": { "type": "string", "format": "date-time" },
+        "features": { "type": "object" },
+        "lastTransactionId": { "type": "string" }
+      },
+      "required": ["userId", "plan", "status"]
+    },
+    "PaymentRequest": {
+      "title": "UPI Payment Request",
+      "description": "Manual UPI payment verification request.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "planType": { "type": "string", "enum": ["monthly", "yearly"] },
+        "amount": { "type": "number" },
+        "transactionId": { "type": "string" },
+        "screenshotUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "verifiedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "planType", "amount", "transactionId", "status"]
+    },
+    "Usage": {
+      "title": "Usage Tracking",
+      "description": "Tracks user resource consumption for plan limits.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "month": { "type": "string", "description": "YYYY-MM format" },
+        "aiCalls": { "type": "number" },
+        "executions": { "type": "number" },
+        "storageUsed": { "type": "number" }
+      },
+      "required": ["userId", "month"]
     }
   },
   "firestore": {
@@ -163,6 +303,42 @@
     "/opportunities/{opportunityId}": {
       "schema": "Opportunity",
       "description": "AI detected opportunities"
+    },
+    "/workspaces/{workspaceId}": {
+      "schema": "Workspace",
+      "description": "Team workspaces"
+    },
+    "/invitations/{invitationId}": {
+      "schema": "Invitation",
+      "description": "Workspace invitations"
+    },
+    "/teamActivity/{activityId}": {
+      "schema": "TeamActivity",
+      "description": "Team action logs"
+    },
+    "/analytics/{analyticsId}": {
+      "schema": "AnalyticsData",
+      "description": "Performance analytics data"
+    },
+    "/memories/{memoryId}": {
+      "schema": "MemoryEntry",
+      "description": "AI long-term memories"
+    },
+    "/systemErrors/{errorId}": {
+      "schema": "SystemError",
+      "description": "System error logs"
+    },
+    "/systemMetrics/{metricId}": {
+      "schema": "SystemMetric",
+      "description": "System health metrics"
+    },
+    "/subscriptions/{subscriptionId}": {
+      "schema": "Subscription",
+      "description": "User SaaS subscriptions"
+    },
+    "/usage/{usageId}": {
+      "schema": "Usage",
+      "description": "User usage tracking"
     }
   }
 }

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Key, Lock, Eye, EyeOff, Copy, Trash2, Plus, Search, X, RefreshCw } from 'lucide-react';
 import { db, auth, collection, query, where, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, handleFirestoreError, OperationType } from '../firebase';
 import { toast } from 'sonner';
+import { EncryptionService } from '../services/encryptionService';
 
 interface Secret {
   id: string;
@@ -10,17 +11,18 @@ interface Secret {
   service: string;
   status: string;
   lastUsed: string;
-  value?: string;
+  value: string; // Encrypted value
 }
 
 export default function IdentityVault() {
   const [secrets, setSecrets] = useState<Secret[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showValues, setShowValues] = useState<Record<string, boolean>>({});
+  const [showValues, setShowValues] = useState<Record<string, string>>({});
   const [isAdding, setIsAdding] = useState(false);
   const [newSecret, setNewSecret] = useState({ name: '', service: 'Google', value: '' });
   const [user, setUser] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [masterPassword, setMasterPassword] = useState('');
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((u) => {
@@ -49,20 +51,36 @@ export default function IdentityVault() {
     return unsubscribe;
   }, [user]);
 
-  const toggleShow = (id: string) => {
-    setShowValues(prev => ({ ...prev, [id]: !prev[id] }));
+  const decryptValue = (id: string, encryptedValue: string) => {
+    if (!masterPassword) {
+      toast.error('Master password required for decryption');
+      return;
+    }
+    try {
+      const decrypted = EncryptionService.decrypt(encryptedValue, masterPassword);
+      setShowValues(prev => ({ ...prev, [id]: decrypted }));
+      toast.success('Value decrypted successfully');
+    } catch (err) {
+      toast.error('Decryption failed. Invalid master password.');
+    }
   };
 
   const addSecret = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    if (!masterPassword) {
+      toast.error('Master password required to encrypt new secret');
+      return;
+    }
 
     try {
+      const encryptedValue = EncryptionService.encrypt(newSecret.value, masterPassword);
+      
       await addDoc(collection(db, 'vault'), {
         userId: user.uid,
         name: newSecret.name,
         service: newSecret.service,
-        value: newSecret.value, // In a real app, this would be encrypted client-side
+        value: encryptedValue,
         status: 'active',
         lastUsed: serverTimestamp(),
         createdAt: serverTimestamp()
@@ -70,7 +88,7 @@ export default function IdentityVault() {
       
       setIsAdding(false);
       setNewSecret({ name: '', service: 'Google', value: '' });
-      toast.success('Secret encrypted and stored successfully');
+      toast.success('Secret encrypted with AES-256-GCM and stored');
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'vault');
     }
@@ -95,17 +113,17 @@ export default function IdentityVault() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-2xl font-bold">Identity Vault</h3>
-          <p className="text-zinc-500 mt-1">Secure encrypted storage for your API tokens and credentials.</p>
+          <p className="text-zinc-500 mt-1">Secure AES-256-GCM encrypted storage for your API tokens.</p>
         </div>
         <div className="flex gap-3">
-          <div className="relative hidden md:block">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-cyan-500" size={18} />
             <input 
-              type="text" 
-              placeholder="Search vault..." 
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="bg-[#0a0a0a] border border-white/5 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-cyan-500/50"
+              type="password" 
+              placeholder="Master Password" 
+              value={masterPassword}
+              onChange={e => setMasterPassword(e.target.value)}
+              className="bg-[#0a0a0a] border border-cyan-500/30 rounded-xl pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-cyan-500 shadow-[0_0_15px_rgba(34,211,238,0.1)]"
             />
           </div>
           <button 
@@ -157,12 +175,19 @@ export default function IdentityVault() {
                 <td className="px-8 py-6">
                   <div className="flex items-center gap-2 font-mono text-xs">
                     <span className="text-zinc-500">
-                      {showValues[cred.id] ? '••••••••••••••••••••' : '••••••••••••••••••••'}
+                      {showValues[cred.id] ? showValues[cred.id] : '••••••••••••••••••••'}
                     </span>
                     <button 
                       onClick={() => {
-                        toggleShow(cred.id);
-                        toast.info('Value decryption requires master password (demo mode)');
+                        if (showValues[cred.id]) {
+                          setShowValues(prev => {
+                            const next = { ...prev };
+                            delete next[cred.id];
+                            return next;
+                          });
+                        } else {
+                          decryptValue(cred.id, cred.value);
+                        }
                       }}
                       className="p-1 text-zinc-600 hover:text-white transition-colors"
                     >
@@ -175,8 +200,12 @@ export default function IdentityVault() {
                   <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button 
                       onClick={() => {
-                        navigator.clipboard.writeText('••••••••');
-                        toast.success('Encrypted value copied to clipboard');
+                        if (showValues[cred.id]) {
+                          navigator.clipboard.writeText(showValues[cred.id]);
+                          toast.success('Decrypted value copied to clipboard');
+                        } else {
+                          toast.error('Decrypt value first to copy');
+                        }
                       }}
                       className="p-2 text-zinc-500 hover:text-white transition-colors"
                     >
@@ -239,7 +268,6 @@ export default function IdentityVault() {
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-cyan-500/50"
                   >
                     <option>Google</option>
-                    <option>Stripe</option>
                     <option>Notion</option>
                     <option>OpenAI</option>
                     <option>Custom</option>

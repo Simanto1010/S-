@@ -1,0 +1,25 @@
+{
+  "name": "S+ Universal AI Connector",
+  "short_name": "S+",
+  "description": "The world's first autonomous AI connector platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#22d3ee",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/splus/192/192",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://picsum.photos/seed/splus/512/512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "orientation": "portrait",
+  "scope": "/"
+}

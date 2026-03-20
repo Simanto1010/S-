@@ -13,7 +13,12 @@ import {
   Bell,
   Search,
   Activity,
-  Brain
+  Brain,
+  BarChart3,
+  Users,
+  CreditCard,
+  Gauge,
+  ShieldAlert
 } from 'lucide-react';
 import { auth, signOut } from '../firebase';
 
@@ -23,20 +28,30 @@ interface LayoutProps {
   setActiveTab: (tab: string) => void;
   user: any;
   onSettingsClick: () => void;
+  isAdmin?: boolean;
 }
 
-export default function Layout({ children, activeTab, setActiveTab, user, onSettingsClick }: LayoutProps) {
+export default function Layout({ children, activeTab, setActiveTab, user, onSettingsClick, isAdmin }: LayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const menuItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { id: 'subscription', icon: CreditCard, label: 'Subscription' },
     { id: 'autonomous', icon: Brain, label: 'Autonomous' },
+    { id: 'analytics', icon: BarChart3, label: 'Analytics' },
+    { id: 'team', icon: Users, label: 'Team Hub' },
     { id: 'nexus', icon: Cable, label: 'Nexus Board' },
     { id: 'console', icon: Terminal, label: 'Execution' },
     { id: 'ai-control', icon: Activity, label: 'AI Control' },
     { id: 'vault', icon: Shield, label: 'Identity Vault' },
     { id: 'automation', icon: Zap, label: 'Automations' },
+    { id: 'usage', icon: Gauge, label: 'Usage & Limits' },
+    { id: 'health', icon: Activity, label: 'System Status' },
   ];
+
+  if (isAdmin) {
+    menuItems.push({ id: 'admin-payments', icon: ShieldAlert, label: 'Admin Payments' });
+  }
 
   return (
     <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-cyan-500/30 overflow-hidden flex">
@@ -167,7 +182,7 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSett
                   <X size={24} />
                 </button>
               </div>
-              <nav className="flex-1 p-4 space-y-2">
+              <nav className="flex-1 p-4 space-y-2 overflow-y-auto custom-scrollbar">
                 {menuItems.map((item) => (
                   <button
                     key={item.id}

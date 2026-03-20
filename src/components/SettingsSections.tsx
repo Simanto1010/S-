@@ -83,7 +83,7 @@ export const APIKeyManagement = ({ settings, onUpdate }: SectionProps) => {
   const [keys, setKeys] = useState<any[]>(settings?.apiKeys || [
     { id: '1', service: 'Gemini AI', key: '••••••••••••••••', status: 'active' },
     { id: '2', service: 'OpenAI', key: '••••••••••••••••', status: 'active' },
-    { id: '3', service: 'Stripe', key: '••••••••••••••••', status: 'error' },
+    { id: '3', service: 'Slack', key: '••••••••••••••••', status: 'active' },
   ]);
   const [isAdding, setIsAdding] = useState(false);
   const [newService, setNewService] = useState('');

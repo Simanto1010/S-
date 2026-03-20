@@ -326,7 +326,7 @@ export default function CommandOrb({ onCommand, isProcessing }: CommandOrbProps)
               {[
                 'Post my latest blog to LinkedIn and Twitter',
                 'Generate a summary of my unread emails',
-                'Check my Stripe balance and notify Slack',
+                'Check my GitHub notifications and notify Slack',
                 'Schedule a meeting with the dev team',
               ].map((suggestion, i) => (
                 <button

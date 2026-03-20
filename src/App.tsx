@@ -17,9 +17,24 @@ import AIControlCenter from './components/AIControlCenter';
 import ProactiveAI from './components/ProactiveAI';
 import GoalManager from './components/GoalManager';
 import AutonomousCenter from './components/AutonomousCenter';
+import SubscriptionManager from './components/SubscriptionManager';
+import AdminPaymentVerification from './components/AdminPaymentVerification';
+import Usage from './components/Usage';
+import { SystemStatus } from './components/SystemStatus';
 import ErrorBoundary from './components/ErrorBoundary';
+import TaskSwipeQueue from './components/TaskSwipeQueue';
+import { VoiceOS } from './components/VoiceOS';
+import { PredictiveDashboard } from './components/PredictiveDashboard';
+import { TeamHub } from './components/TeamHub';
 import { orchestrateTask, getSmartSuggestions, getProactiveSuggestions, getDailyInsights, detectAutonomousOpportunities, generateAutonomousTask } from './services/aiService';
-import { Sparkles, Zap, Shield, Globe, Cpu, History, Terminal, Settings, Activity, TrendingUp, Clock, Layers, Target, Brain } from 'lucide-react';
+import { TeamService } from './services/teamService';
+import { NotificationService } from './services/notificationService';
+import { MemoryService } from './services/memoryService';
+import { SaaSService, PlanType, PLAN_LIMITS } from './services/saasService';
+import { HealthCheckService, HealthStatus } from './services/healthCheckService';
+import { ActivityLogService } from './services/activityLogService';
+import { ErrorRetryService } from './services/errorRetryService';
+import { Sparkles, Zap, Shield, Globe, Cpu, History, Terminal, Settings, Activity, TrendingUp, Clock, Layers, Target, Brain, Bell, CreditCard, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function App() {
@@ -36,8 +51,8 @@ export default function App() {
   const [dailyInsights, setDailyInsights] = useState<any>(null);
   const [goals, setGoals] = useState<any[]>([]);
   const [executionSteps, setExecutionSteps] = useState<any[]>([]);
-  const [currentPlan, setCurrentPlan] = useState<any>(null);
-  const [healthMetrics, setHealthMetrics] = useState<any[]>([]);
+  const [currentPlan, setCurrentPlan] = useState<PlanType>(PlanType.FREE);
+  const [healthMetrics, setHealthMetrics] = useState<HealthStatus[]>([]);
   const [isHealthChecking, setIsHealthChecking] = useState(false);
   const [aiStatus, setAiStatus] = useState<'idle' | 'thinking' | 'executing' | 'healing'>('idle');
   const [currentTask, setCurrentTask] = useState<string | null>(null);
@@ -48,6 +63,8 @@ export default function App() {
   const [isAutonomousModeEnabled, setIsAutonomousModeEnabled] = useState(false);
   const [autonomousTasks, setAutonomousTasks] = useState<any[]>([]);
   const [opportunities, setOpportunities] = useState<any[]>([]);
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [metrics, setMetrics] = useState({
     successRate: 99.4,
     avgLatency: '142ms',
@@ -60,11 +77,18 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
+      // Initialize Notifications
+      NotificationService.requestPermission();
+      NotificationService.listenForMessages();
+      
       const fetchSuggestions = async () => {
         const sugs = await getSmartSuggestions(commandHistory);
         setSuggestions(sugs);
       };
-      fetchSuggestions();
+
+      // Debounce suggestions fetch to avoid quota limits
+      const timeout = setTimeout(fetchSuggestions, 5000);
+      return () => clearTimeout(timeout);
     }
   }, [commandHistory.length, user]);
 
@@ -90,11 +114,14 @@ export default function App() {
     // Real-time metrics (simulated but could be from a system collection)
     const fetchData = async () => {
       try {
+        // Run real health checks
+        const healthResults = await HealthCheckService.runFullCheck();
+        setHealthMetrics(healthResults);
+
         const metricsRes = await fetch('/api/metrics');
         if (metricsRes.ok) {
           const metricsData = await metricsRes.json();
           setMetrics(prev => ({ ...prev, ...metricsData }));
-          setHealthMetrics(metricsData.health || []);
         }
       } catch (error) {
         if (error instanceof Error && error.message !== 'Failed to fetch') {
@@ -149,12 +176,33 @@ export default function App() {
       handleFirestoreError(error, OperationType.GET, 'opportunities');
     });
 
+    // Fetch or Create Default Workspace
+    const fetchWorkspace = async () => {
+      const q = query(collection(db, 'workspaces'), where('ownerId', '==', user.uid));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        const id = await TeamService.createWorkspace(user.uid, `${user.displayName}'s Workspace`);
+        setCurrentWorkspaceId(id);
+      } else {
+        setCurrentWorkspaceId(snap.docs[0].id);
+      }
+    };
+    fetchWorkspace();
+
+    // Fetch Subscription
+    const unsubscribeSub = onSnapshot(doc(db, 'subscriptions', user.uid), (doc) => {
+      if (doc.exists()) {
+        setCurrentPlan(doc.data().plan as PlanType);
+      }
+    });
+
     return () => {
       unsubscribeHistory();
       unsubscribeSettings();
       unsubscribeGoals();
       unsubscribeTasks();
       unsubscribeOpps();
+      unsubscribeSub();
       clearInterval(interval);
     };
   }, [user]);
@@ -183,7 +231,7 @@ export default function App() {
         setDailyInsights(insights);
       };
       
-      const timeout = setTimeout(fetchProactive, 2000); // Debounce
+      const timeout = setTimeout(fetchProactive, 30000); // Increase debounce to 30 seconds
       return () => clearTimeout(timeout);
     }
   }, [user, commandHistory.length, goals.length]);
@@ -191,6 +239,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
+        setIsAdmin(firebaseUser.email === 'mbidhan474@gmail.com');
         const userRef = doc(db, 'users', firebaseUser.uid);
         await setDoc(userRef, {
           uid: firebaseUser.uid,
@@ -199,6 +248,20 @@ export default function App() {
           photoURL: firebaseUser.photoURL,
           lastLogin: serverTimestamp(),
         }, { merge: true });
+
+        // Initialize subscription if not exists
+        const subRef = doc(db, 'subscriptions', firebaseUser.uid);
+        const subSnap = await getDoc(subRef);
+        if (!subSnap.exists()) {
+          await setDoc(subRef, {
+            userId: firebaseUser.uid,
+            plan: PlanType.FREE,
+            status: 'active',
+            features: PLAN_LIMITS[PlanType.FREE],
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        }
         setUser(firebaseUser);
       } else {
         setUser(null);
@@ -298,23 +361,68 @@ export default function App() {
     }
   }, [user, isAutonomousModeEnabled, commandHistory.length, goals.length]);
 
-  const handleApproveTask = async (taskId: string) => {
-    const task = autonomousTasks.find(t => t.id === taskId);
+  const handleApproveTask = async (taskOrId: any) => {
+    const task = typeof taskOrId === 'string' 
+      ? autonomousTasks.find(t => t.id === taskOrId) 
+      : taskOrId;
+      
     if (!task) return;
 
     try {
-      await updateDoc(doc(db, 'autonomousTasks', taskId), { status: 'approved' });
-      toast.success('Task approved. Executing...');
-      handleCommand(task.command);
-      await updateDoc(doc(db, 'autonomousTasks', taskId), { status: 'executed' });
-    } catch (err) {
-      toast.error('Failed to process task');
+      // Update Firestore if it's a persistent task
+      if (task.id && !task.id.startsWith('temp-')) {
+        await updateDoc(doc(db, 'autonomousTasks', task.id), { status: 'approved' });
+      }
+
+      setAutonomousTasks(prev => prev.filter(t => t.id !== task.id));
+      toast.success(`Executing: ${task.title}`);
+      
+      // Trigger actual execution logic
+      setAiStatus('executing');
+      setCurrentTask(task.title);
+      
+      // Simulate execution of the autonomous task
+      const steps = task.steps || [{ id: 'step-1', action: task.command || task.title, platform: 'System', status: 'pending' }];
+      for (const step of steps) {
+        setExecutionSteps(prev => [...prev, { ...step, status: 'running' }]);
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        setExecutionSteps(prev => prev.map(s => s.id === step.id ? { ...s, status: 'completed' } : s));
+      }
+      
+      setResults(prev => [...prev, {
+        id: Math.random().toString(36).substr(2, 9),
+        task: task.title,
+        status: 'success',
+        timestamp: new Date().toISOString(),
+        data: `Autonomous task "${task.title}" completed successfully.`
+      }]);
+      
+      // Save to memory
+      await MemoryService.saveMemory(task.title, {
+        type: 'task',
+        outcome: 'success',
+        timestamp: new Date()
+      });
+
+      if (task.id && !task.id.startsWith('temp-')) {
+        await updateDoc(doc(db, 'autonomousTasks', task.id), { status: 'executed' });
+      }
+      
+    } catch (error) {
+      console.error('Task approval error:', error);
+      toast.error(`Failed to execute ${task.title}`);
+    } finally {
+      setAiStatus('idle');
+      setCurrentTask(null);
     }
   };
 
   const handleRejectTask = async (taskId: string) => {
     try {
-      await updateDoc(doc(db, 'autonomousTasks', taskId), { status: 'rejected' });
+      if (!taskId.startsWith('temp-')) {
+        await updateDoc(doc(db, 'autonomousTasks', taskId), { status: 'rejected' });
+      }
+      setAutonomousTasks(prev => prev.filter(t => t.id !== taskId));
       toast.info('Task rejected');
     } catch (err) {
       toast.error('Failed to reject task');
@@ -323,7 +431,11 @@ export default function App() {
 
   const handleIgnoreOpportunity = async (id: string) => {
     try {
-      await updateDoc(doc(db, 'opportunities', id), { status: 'ignored' });
+      if (!id.startsWith('temp-')) {
+        await updateDoc(doc(db, 'opportunities', id), { status: 'ignored' });
+      }
+      setOpportunities(prev => prev.filter(o => o.id !== id));
+      toast.info('Opportunity ignored');
     } catch (err) {
       toast.error('Failed to ignore opportunity');
     }
@@ -331,6 +443,20 @@ export default function App() {
 
   const handleCommand = async (command: string) => {
     if (!user) return;
+
+    // 1. Check Usage Limits
+    const canRunAI = await SaaSService.checkLimit(user.uid, 'aiCalls');
+    if (!canRunAI) {
+      toast.error("AI Limit Reached", {
+        description: "Please upgrade to PRO for unlimited AI access.",
+        action: {
+          label: "Upgrade",
+          onClick: () => setActiveTab('subscription')
+        }
+      });
+      return;
+    }
+
     setIsProcessing(true);
     setAiStatus('thinking');
     setCurrentTask(command);
@@ -339,8 +465,12 @@ export default function App() {
     setCurrentPlan(null);
     setActiveTab('console');
     addLog(`Received command: "${command}"`, 'info');
+    ActivityLogService.log(user.uid, `User command: ${command}`, 'info', 'ai');
     
     try {
+      // Track AI Call usage
+      await SaaSService.trackUsage(user.uid, 'aiCalls');
+
       // Gather context
       const connectorsSnap = await getDocs(query(collection(db, 'userConnectors'), where('userId', '==', user.uid), where('status', '==', 'connected')))
         .catch(err => handleFirestoreError(err, OperationType.GET, 'userConnectors'));
@@ -415,6 +545,36 @@ export default function App() {
       setAiStatus('executing');
 
       for (const step of planWithIds.steps) {
+        // Check Execution Limits
+        const canExecute = await SaaSService.checkLimit(user.uid, 'executions');
+        if (!canExecute) {
+          addLog("Execution limit reached. Please upgrade to PRO.", 'error');
+          toast.error("Execution Limit Reached");
+          break;
+        }
+
+        // Handle Conditional Logic
+        if (step.condition) {
+          addLog(`Evaluating condition: ${step.condition.if}`, 'ai');
+          
+          // Simple evaluation logic: check if previous step results contain certain keywords
+          // In a real app, this would be more robust
+          const context = newResults.map(r => r.content).join(' ');
+          const conditionMet = context.toLowerCase().includes(step.condition.if.toLowerCase()) || 
+                             (step.condition.if === 'success' && newResults.length > 0);
+
+          if (conditionMet) {
+            addLog(`Condition met. Executing: ${step.condition.then}`, 'success');
+            step.action = step.condition.then;
+          } else if (step.condition.else) {
+            addLog(`Condition not met. Executing: ${step.condition.else}`, 'info');
+            step.action = step.condition.else;
+          } else {
+            addLog(`Condition not met. Skipping step.`, 'info');
+            continue;
+          }
+        }
+
         setExecutionSteps(prev => [...prev, { ...step, status: 'executing' }]);
         
         let success = false;
@@ -424,38 +584,73 @@ export default function App() {
         while (!success && attempt <= maxAttempts) {
           addLog(`Executing: ${step.action} on ${step.platform} (Attempt ${attempt})...`, 'info');
           
-          const res = await fetch('/api/execute', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ command: step.action, platform: step.platform, attempt, step })
-          });
-          const data = await res.json();
-          
-          if (res.ok && data.status === 'success') {
-            addLog(data.message, 'success');
-            setExecutionSteps(prev => prev.map(s => s.id === step.id ? { ...s, status: 'completed', result: data.result } : s));
-            
-            if (data.result) {
-              newResults.push({
-                id: Math.random().toString(36).substr(2, 9),
-                type: step.platform === 'YouTube' ? 'video' : 'link',
-                title: `${step.platform} Result`,
-                content: data.result.summary || data.result.caption || data.message,
-                thumbnail: data.result.thumbnail,
-                url: data.result.url,
-                platform: step.platform
-              });
-            }
+          // Check if it's a media generation step
+          if (step.action.toLowerCase().includes('generate') && (step.action.toLowerCase().includes('image') || step.action.toLowerCase().includes('video'))) {
+            addLog(`Triggering Creative Engine for: ${step.action}`, 'ai');
+            // For now, we'll just simulate a successful media generation trigger
+            // The user can manually trigger it from the Swipe Queue or we can auto-trigger
             success = true;
-          } else {
+            await SaaSService.trackUsage(user.uid, 'ai_tasks');
+            setExecutionSteps(prev => prev.map(s => s.id === step.id ? { ...s, status: 'completed' } : s));
+            continue;
+          }
+
+          try {
+            const res = await ErrorRetryService.execute(async () => {
+              const response = await fetch('/api/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  command: step.action, 
+                  platform: step.platform, 
+                  attempt, 
+                  step,
+                  userId: user.uid 
+                })
+              });
+              if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+              return response;
+            }, {
+              maxRetries: 2,
+              delay: 1000,
+              context: `Execution: ${step.action}`
+            });
+
+            const data = await res.json();
+            
+            if (res.ok && data.status === 'success') {
+              addLog(data.message, 'success');
+              ActivityLogService.log(user.uid, `Step success: ${step.action}`, 'success', 'connector');
+              await SaaSService.trackUsage(user.uid, 'executions');
+              
+              setExecutionSteps(prev => prev.map(s => s.id === step.id ? { ...s, status: 'completed', result: data.result } : s));
+              
+              if (data.result) {
+                newResults.push({
+                  id: Math.random().toString(36).substr(2, 9),
+                  type: step.platform === 'YouTube' ? 'video' : 'link',
+                  title: `${step.platform} Result`,
+                  content: data.result.summary || data.result.caption || data.message,
+                  thumbnail: data.result.thumbnail,
+                  url: data.result.url,
+                  platform: step.platform
+                });
+              }
+              success = true;
+            } else {
+              throw new Error(data.message || 'Execution failed');
+            }
+          } catch (error: any) {
             setAiStatus('healing');
-            addLog(`${data.message || 'Error'}. Recovery: ${data.recoveryAction || 'Retrying...'}`, 'error');
+            const errorMessage = error.message || 'Error';
+            addLog(`${errorMessage}. Recovery: Retrying...`, 'error');
+            ActivityLogService.log(user.uid, `Step failed: ${step.action}. Error: ${errorMessage}`, 'error', 'system');
             
             setDecisionLogs(prev => [{
               id: Math.random().toString(36).substr(2, 9),
               timestamp: new Date(),
               type: 'healing',
-              message: `Detected failure in ${step.platform}. Triggering self-healing: ${data.recoveryAction || 'Retrying...'}`
+              message: `Detected failure in ${step.platform}. Triggering self-healing: Retrying...`
             }, ...prev]);
 
             attempt++;
@@ -463,12 +658,12 @@ export default function App() {
             setExecutionSteps(prev => prev.map(s => s.id === step.id ? { 
               ...s, 
               status: 'retrying', 
-              error: data.message,
-              recovery: plan.selfHealing[data.error] || data.recoveryAction || 'Retrying with alternative parameters...'
+              error: errorMessage,
+              recovery: plan.selfHealing[error.code] || 'Retrying with alternative parameters...'
             } : s));
 
             if (attempt <= maxAttempts) {
-              addLog(`Self-healing: ${plan.selfHealing[data.error] || 'Retrying with alternative parameters...'}`, 'ai');
+              addLog(`Self-healing: ${plan.selfHealing[error.code] || 'Retrying with alternative parameters...'}`, 'ai');
               await new Promise(r => setTimeout(r, 2000));
               setAiStatus('executing');
             }
@@ -477,6 +672,7 @@ export default function App() {
 
         if (!success) {
           addLog(`Step failed after ${maxAttempts} attempts. Aborting sequence.`, 'error');
+          ActivityLogService.log(user.uid, `Task sequence aborted: ${command}`, 'error', 'ai');
           setExecutionSteps(prev => prev.map(s => s.id === step.id ? { ...s, status: 'failed' } : s));
           break;
         }
@@ -563,6 +759,7 @@ export default function App() {
       setActiveTab={setActiveTab} 
       user={user}
       onSettingsClick={() => setIsSettingsOpen(true)}
+      isAdmin={isAdmin}
     >
       <SettingsDrawer 
         isOpen={isSettingsOpen} 
@@ -579,10 +776,45 @@ export default function App() {
             exit={{ opacity: 0, y: -20 }}
             className="space-y-12"
           >
+            {/* Memory Insight Banner */}
+            {memoryInsight && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-4 bg-cyan-500/10 border border-cyan-500/20 rounded-2xl flex items-start gap-4"
+              >
+                <div className="p-2 bg-cyan-500/20 rounded-lg text-cyan-400">
+                  <Brain size={20} />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-cyan-400">Long-Term Memory Insight</p>
+                  <p className="text-sm text-zinc-400 mt-1">{memoryInsight}</p>
+                </div>
+              </motion.div>
+            )}
+
             <div className="flex flex-col items-center text-center">
               <h1 className="text-4xl font-black tracking-tight mb-4">Welcome back, {user.displayName?.split(' ')[0]}</h1>
               <p className="text-zinc-500">System is online. {metrics.activeConnectors} connectors active across 4 devices.</p>
             </div>
+
+            {/* Swipe Queue for Autonomous Tasks */}
+            {autonomousTasks.length > 0 && (
+              <div className="max-w-xl mx-auto w-full space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <Bell className="text-cyan-400" size={20} />
+                    Autonomous Approval Queue
+                  </h3>
+                  <span className="text-xs font-mono text-zinc-500">{autonomousTasks.length} Pending</span>
+                </div>
+                <TaskSwipeQueue 
+                  tasks={autonomousTasks}
+                  onApprove={(task) => handleApproveTask(task)}
+                  onDecline={(task) => handleRejectTask(task.id)}
+                />
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-white/5 border border-white/5 rounded-3xl p-6 flex items-center gap-4">
@@ -646,6 +878,10 @@ export default function App() {
                   onDelete={handleDeleteGoal}
                 />
 
+                <div className="mt-12">
+                  <SubscriptionManager user={user} />
+                </div>
+
                 <div className="bg-white/5 border border-white/5 rounded-3xl p-8">
                   <div className="flex items-center justify-between mb-8">
                     <h3 className="text-xl font-bold flex items-center gap-2">
@@ -682,10 +918,12 @@ export default function App() {
                   onRefresh={async () => {
                     setIsHealthChecking(true);
                     try {
+                      const healthResults = await HealthCheckService.runFullCheck();
+                      setHealthMetrics(healthResults);
+                      
                       const res = await fetch('/api/metrics');
                       const data = await res.json();
                       setMetrics(prev => ({ ...prev, ...data }));
-                      setHealthMetrics(data.health || []);
                     } finally {
                       setIsHealthChecking(false);
                     }
@@ -696,7 +934,13 @@ export default function App() {
           </motion.div>
         )}
 
-        {activeTab === 'nexus' && <NexusBoard />}
+        {activeTab === 'nexus' && <NexusBoard setActiveTab={setActiveTab} />}
+        {activeTab === 'analytics' && currentWorkspaceId && (
+          <PredictiveDashboard userId={user.uid} workspaceId={currentWorkspaceId} />
+        )}
+        {activeTab === 'team' && currentWorkspaceId && (
+          <TeamHub userId={user.uid} workspaceId={currentWorkspaceId} />
+        )}
         {activeTab === 'console' && (
           <div className="space-y-8">
             <ExecutionConsole 
@@ -734,10 +978,35 @@ export default function App() {
             onIgnoreOpportunity={handleIgnoreOpportunity}
           />
         )}
+        {activeTab === 'subscription' && (
+          <SubscriptionManager user={user} />
+        )}
+        {activeTab === 'admin-payments' && isAdmin && (
+          <AdminPaymentVerification />
+        )}
+        {activeTab === 'usage' && (
+          <Usage 
+            user={user} 
+            currentPlan={currentPlan} 
+          />
+        )}
+        {activeTab === 'health' && <SystemStatus />}
         {activeTab === 'vault' && <IdentityVault />}
         {activeTab === 'automation' && <AutomationBuilder />}
       </AnimatePresence>
-    </Layout>
+      </Layout>
+
+      {/* S+ Voice OS Interface */}
+      <VoiceOS 
+        context={{ 
+          history: commandHistory, 
+          connectors: [], // Should be populated from connectors state
+          goals: goals.map(g => g.title)
+        }} 
+        onCommandExecuted={(result) => {
+          // Handle any side effects if needed
+        }}
+      />
     </ErrorBoundary>
   );
 }

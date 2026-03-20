@@ -5,7 +5,7 @@ import {
   onAuthStateChanged, updateProfile
 } from 'firebase/auth';
 import { 
-  getFirestore, doc, getDoc, setDoc, collection, query, where, 
+  initializeFirestore, doc, getDoc, setDoc, collection, query, where, 
   onSnapshot, serverTimestamp, getDocFromServer, updateDoc,
   deleteDoc, addDoc, getDocs, orderBy, limit
 } from 'firebase/firestore';
@@ -22,7 +22,13 @@ if (missingFields.length > 0) {
 }
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Configure Firestore with long polling to prevent idle stream timeouts in the iframe environment
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+  ignoreUndefinedProperties: true,
+}, firebaseConfig.firestoreDatabaseId);
+
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 

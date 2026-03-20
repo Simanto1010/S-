@@ -26,6 +26,18 @@
 // Document ID: {workflowId}
 // Fields: userId, name, nodes, createdAt, updatedAt
 //
+// Collection: systemErrors
+// Document ID: {errorId}
+// Fields: userId, service, error, context, retryCount, timestamp, resolved
+//
+// Collection: systemMetrics
+// Document ID: {metricId}
+// Fields: userId, cpu, latency, successRate, activeTasks, timestamp
+//
+// Collection: activityLogs
+// Document ID: {logId}
+// Fields: userId, action, type, category, details, timestamp
+//
 // ===============================================================
 
 rules_version = '2';
@@ -54,6 +66,16 @@ service cloud.firestore {
           (request.auth.token.email == "mbidhan474@gmail.com" && request.auth.token.email_verified == true));
     }
 
+    function isWorkspaceMember(workspaceId) {
+      let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
+      return isAuthenticated() && (workspace.ownerId == request.auth.uid || workspace.members.hasAny([request.auth.uid]));
+    }
+
+    function getWorkspaceRole(workspaceId) {
+      let workspace = get(/databases/$(database)/documents/workspaces/$(workspaceId)).data;
+      return workspace.members[request.auth.uid].role;
+    }
+
     // ===============================================================
     // Domain Validators
     // ===============================================================
@@ -64,6 +86,14 @@ service cloud.firestore {
 
     function isUserOwned(data) {
       return isAuthenticated() && data != null && data.userId == request.auth.uid;
+    }
+
+    function isValidActivityLog(data) {
+      return data.userId is string && 
+             data.action is string && data.action.size() < 500 &&
+             data.type in ['info', 'success', 'warning', 'error', 'ai'] &&
+             data.category in ['auth', 'payment', 'system', 'ai', 'connector'] &&
+             data.timestamp is timestamp;
     }
 
     // ===============================================================
@@ -128,6 +158,75 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isUserOwned(request.resource.data);
       allow update: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
       allow delete: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+    }
+
+    match /workspaces/{workspaceId} {
+      allow read: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || resource.data.members.hasAny([request.auth.uid]));
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
+      allow delete: if isAuthenticated() && (resource.data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    match /invitations/{invitationId} {
+      allow read: if isAuthenticated() && (resource.data.email == request.auth.token.email || resource.data.invitedBy == request.auth.uid);
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (resource.data.email == request.auth.token.email || resource.data.invitedBy == request.auth.uid);
+      allow delete: if isAuthenticated() && (resource.data.invitedBy == request.auth.uid);
+    }
+
+    match /teamActivity/{activityId} {
+      allow read: if isAuthenticated() && isWorkspaceMember(resource.data.workspaceId);
+      allow create: if isAuthenticated() && isWorkspaceMember(request.resource.data.workspaceId);
+    }
+
+    match /analytics/{analyticsId} {
+      allow read: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+      allow create: if isAuthenticated() && isUserOwned(request.resource.data);
+    }
+
+    match /memories/{memoryId} {
+      allow read: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+      allow create: if isAuthenticated() && isUserOwned(request.resource.data);
+      allow update: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+      allow delete: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+    }
+
+    match /systemErrors/{errorId} {
+      allow read: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+      allow create: if isAuthenticated() && isUserOwned(request.resource.data);
+      allow update: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+    }
+
+    match /systemMetrics/{metricId} {
+      allow read: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+      allow create: if isAuthenticated() && isUserOwned(request.resource.data);
+    }
+
+    match /activityLogs/{logId} {
+      allow read: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin() || resource.data.category == 'system');
+      allow create: if isAuthenticated() && (isUserOwned(request.resource.data) || request.resource.data.userId == 'system');
+    }
+
+    match /subscriptions/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && request.resource.data.plan == 'free';
+      allow update: if isAdmin() || (isOwner(userId) && (
+        (request.resource.data.status == 'pending_verification' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'lastTransactionId', 'updatedAt'])) || 
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelAtPeriodEnd', 'updatedAt']))
+      ));
+    }
+
+    match /usage/{usageId} {
+      allow read: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+      allow create: if isAuthenticated() && isUserOwned(request.resource.data);
+      allow update: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+    }
+
+    match /paymentRequests/{requestId} {
+      allow read: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin());
+      allow create: if isAuthenticated() && isUserOwned(request.resource.data);
+      allow update: if isAdmin(); // Only admin can approve/reject
+      allow delete: if isAdmin();
     }
   }
 }
