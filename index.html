@@ -9,8 +9,35 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="margin: 0; background: #000;">
+    <div id="root">
+      <div id="initial-loader" style="position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; font-family: sans-serif;">
+        <div style="width: 40px; height: 40px; border: 3px solid rgba(34, 211, 238, 0.1); border-top-color: #22d3ee; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <div style="margin-top: 20px; color: #fff; font-size: 12px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.5;">S+ System Initializing</div>
+        <style>
+          @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+      </div>
+    </div>
+    <div id="crash-screen" style="display: none; position: fixed; inset: 0; background: #000; color: #fff; padding: 40px; font-family: sans-serif; z-index: 10000;">
+      <h1 style="color: #ef4444; font-size: 24px; font-weight: 900; margin-bottom: 10px;">SYSTEM CRITICAL FAULT</h1>
+      <p style="color: #71717a; font-size: 14px; margin-bottom: 30px;">The S+ kernel failed to initialize. A diagnostic report has been generated.</p>
+      <div id="error-details" style="background: #0a0a0a; border: 1px solid #ef444433; padding: 20px; border-radius: 12px; font-family: monospace; font-size: 12px; color: #f87171; margin-bottom: 30px; white-space: pre-wrap; word-break: break-all;"></div>
+      <button onclick="window.location.reload()" style="background: #ef4444; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; cursor: pointer;">Restart Core System</button>
+    </div>
+    <script>
+      window.onerror = function(msg, url, lineNo, columnNo, error) {
+        const loader = document.getElementById('initial-loader');
+        if (loader) loader.style.display = 'none';
+        const crash = document.getElementById('crash-screen');
+        const details = document.getElementById('error-details');
+        if (crash && details) {
+          crash.style.display = 'block';
+          details.innerText = `Error: ${msg}\nLocation: ${url}:${lineNo}:${columnNo}\nStack: ${error ? error.stack : 'N/A'}`;
+        }
+        return false;
+      };
+    </script>
     <script type="module" src="/src/main.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {

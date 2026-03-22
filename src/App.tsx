@@ -683,14 +683,14 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
+    <>
       <Layout 
-      activeTab={activeTab} 
-      setActiveTab={setActiveTab} 
-      user={user}
-      onSettingsClick={() => setIsSettingsOpen(true)}
-      isAdmin={isAdmin}
-    >
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        user={user}
+        onSettingsClick={() => setIsSettingsOpen(true)}
+        isAdmin={isAdmin}
+      >
       <SettingsDrawer 
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
@@ -950,6 +950,6 @@ export default function App() {
           // Handle any side effects if needed
         }}
       />
-    </ErrorBoundary>
+    </>
   );
 }
