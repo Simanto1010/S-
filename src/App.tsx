@@ -68,6 +68,7 @@ export default function App() {
   const [opportunities, setOpportunities] = useState<any[]>([]);
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [metrics, setMetrics] = useState({
     successRate: 99.4,
     avgLatency: '142ms',
@@ -77,6 +78,24 @@ export default function App() {
     memory: 45,
     uptime: '14d 2h 12m'
   });
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -676,6 +695,8 @@ export default function App() {
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
         user={user}
+        deferredPrompt={deferredPrompt}
+        onInstall={handleInstallApp}
       />
 
       <AnimatePresence mode="wait">

@@ -19,9 +19,11 @@ interface SettingsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   user: any;
+  deferredPrompt?: any;
+  onInstall?: () => void;
 }
 
-export default function SettingsDrawer({ isOpen, onClose, user }: SettingsDrawerProps) {
+export default function SettingsDrawer({ isOpen, onClose, user, deferredPrompt, onInstall }: SettingsDrawerProps) {
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [settings, setSettings] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -157,6 +159,21 @@ export default function SettingsDrawer({ isOpen, onClose, user }: SettingsDrawer
                   </div>
 
                   <div className="space-y-2">
+                    {deferredPrompt && (
+                      <button 
+                        onClick={onInstall}
+                        className="w-full p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-all flex items-center gap-4 text-cyan-400 group mb-4"
+                      >
+                        <div className="p-3 bg-cyan-500/10 rounded-xl">
+                          <Smartphone size={20} />
+                        </div>
+                        <div className="flex-1 text-left">
+                          <p className="text-sm font-bold">Install S+ App</p>
+                          <p className="text-[10px] uppercase tracking-widest opacity-60">Add to home screen for better experience</p>
+                        </div>
+                      </button>
+                    )}
+
                     {sections.map((section) => (
                       <button
                         key={section.id}

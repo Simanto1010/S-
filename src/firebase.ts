@@ -26,6 +26,7 @@ const app = initializeApp(firebaseConfig);
 // Configure Firestore with long polling to prevent idle stream timeouts in the iframe environment
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
+  experimentalAutoDetectLongPolling: true,
   ignoreUndefinedProperties: true,
 }, firebaseConfig.firestoreDatabaseId);
 
