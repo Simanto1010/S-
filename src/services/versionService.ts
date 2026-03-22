@@ -28,6 +28,8 @@ export class VersionService {
         // Initialize version doc if it doesn't exist (Admin only usually, but for safety)
         this.initializeVersionDoc();
       }
+    }, (error) => {
+      console.error('Version subscription error:', error);
     });
   }
 

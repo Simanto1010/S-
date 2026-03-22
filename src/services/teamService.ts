@@ -1,4 +1,4 @@
-import { db, auth } from "../firebase";
+import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { collection, query, where, getDocs, addDoc, updateDoc, doc, serverTimestamp, arrayUnion, onSnapshot } from "firebase/firestore";
 
 export class TeamService {
@@ -74,6 +74,8 @@ export class TeamService {
     return onSnapshot(q, (snapshot) => {
       const activities = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       callback(activities.sort((a: any, b: any) => b.timestamp?.seconds - a.timestamp?.seconds));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, `teamActivity/${workspaceId}`);
     });
   }
 

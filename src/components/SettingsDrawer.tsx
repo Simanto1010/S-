@@ -11,7 +11,7 @@ import {
   NotificationSettings, 
   AutomationPreferences 
 } from './SettingsSections';
-import { db, auth, doc, onSnapshot, setDoc } from '../firebase';
+import { db, auth, doc, onSnapshot, setDoc, handleFirestoreError, OperationType } from '../firebase';
 import { toast } from 'sonner';
 import { signOut } from 'firebase/auth';
 
@@ -58,7 +58,7 @@ export default function SettingsDrawer({ isOpen, onClose, user, deferredPrompt, 
           setSettings(defaultSettings);
         }
       }, (error) => {
-        handleFirestoreError(error, 'get', `settings/${user.uid}`);
+        handleFirestoreError(error, OperationType.GET, `settings/${user.uid}`);
       });
 
       const unsubProfile = onSnapshot(profileRef, (doc) => {
@@ -66,7 +66,7 @@ export default function SettingsDrawer({ isOpen, onClose, user, deferredPrompt, 
           setProfile(doc.data());
         }
       }, (error) => {
-        handleFirestoreError(error, 'get', `users/${user.uid}`);
+        handleFirestoreError(error, OperationType.GET, `users/${user.uid}`);
       });
 
       return () => {
@@ -82,33 +82,9 @@ export default function SettingsDrawer({ isOpen, onClose, user, deferredPrompt, 
       const settingsRef = doc(db, 'settings', user.uid);
       await setDoc(settingsRef, newData, { merge: true });
     } catch (err) {
-      handleFirestoreError(err, 'update', `settings/${user.uid}`);
+      handleFirestoreError(err, OperationType.UPDATE, `settings/${user.uid}`);
     }
   };
-
-  function handleFirestoreError(error: any, operationType: string, path: string) {
-    const errInfo = {
-      error: error instanceof Error ? error.message : String(error),
-      authInfo: {
-        userId: auth.currentUser?.uid,
-        email: auth.currentUser?.email,
-        emailVerified: auth.currentUser?.emailVerified,
-        isAnonymous: auth.currentUser?.isAnonymous,
-        tenantId: auth.currentUser?.tenantId,
-        providerInfo: auth.currentUser?.providerData.map(provider => ({
-          providerId: provider.providerId,
-          displayName: provider.displayName,
-          email: provider.email,
-          photoUrl: provider.photoURL
-        })) || []
-      },
-      operationType,
-      path
-    };
-    console.error('Firestore Error: ', JSON.stringify(errInfo));
-    toast.error('System permission error. Check console for details.');
-    throw new Error(JSON.stringify(errInfo));
-  }
 
   const sections = [
     { id: 'profile', icon: User, label: 'Profile Settings', desc: 'Manage your public profile and email.', component: ProfileSettings },

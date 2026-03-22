@@ -1,4 +1,4 @@
-import { db } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp } from 'firebase/firestore';
 
 export interface ActivityLog {
@@ -41,6 +41,8 @@ export class ActivityLogService {
         ...doc.data()
       })) as ActivityLog[];
       callback(logs);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, `activityLogs/${userId}`);
     });
   }
 
@@ -58,6 +60,8 @@ export class ActivityLogService {
         ...doc.data()
       })) as ActivityLog[];
       callback(logs);
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'activityLogs/system');
     });
   }
 }

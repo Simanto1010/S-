@@ -9,8 +9,9 @@ import {
 import { db, auth, serverTimestamp } from '../firebase';
 import { 
   collection, query, where, onSnapshot, 
-  doc, updateDoc, getDoc, orderBy, limit 
-} from 'firebase/firestore';
+  doc, updateDoc, getDoc, orderBy, limit,
+  handleFirestoreError, OperationType 
+} from '../firebase';
 import { toast } from 'sonner';
 import { PlanType, PLAN_LIMITS } from '../services/saasService';
 import { ActivityLogService } from '../services/activityLogService';
@@ -34,7 +35,7 @@ export default function AdminPaymentVerification() {
       setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
     }, (err) => {
-      console.error("Failed to fetch payment requests:", err);
+      handleFirestoreError(err, OperationType.GET, 'paymentRequests');
       setLoading(false);
     });
 

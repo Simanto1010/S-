@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Activity, Zap, Cpu, Layers, AlertTriangle } from 'lucide-react';
 import { PlanType, PLAN_LIMITS, SaaSService } from '../services/saasService';
 import { ActivityLogService, ActivityLog } from '../services/activityLogService';
-import { doc, onSnapshot, db } from '../firebase';
+import { doc, onSnapshot, db, handleFirestoreError, OperationType } from '../firebase';
 
 interface UsageProps {
   user: any;
@@ -27,6 +27,8 @@ export default function Usage({ user, currentPlan }: UsageProps) {
       } else {
         setUsage({ aiCalls: 0, executions: 0, ai_tasks: 0, storageUsed: 0 });
       }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, `usage/${usageId}`);
     });
 
     const unsubscribeLogs = ActivityLogService.subscribeToLogs(user.uid, (newLogs) => {

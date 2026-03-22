@@ -7,7 +7,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { SaaSService, PlanType, PLAN_LIMITS } from '../services/saasService';
-import { db, auth, serverTimestamp } from '../firebase';
+import { db, auth, serverTimestamp, handleFirestoreError, OperationType } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { toast } from 'sonner';
 
@@ -34,6 +34,8 @@ export default function SubscriptionManager({ user }: SubscriptionManagerProps) 
       if (doc.exists()) {
         setSubscription(doc.data());
       }
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, `subscriptions/${user.uid}`);
     });
 
     const fetchHistory = async () => {

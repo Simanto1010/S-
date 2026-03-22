@@ -21,43 +21,75 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
+    console.error('[ErrorBoundary] Uncaught error:', error, errorInfo);
   }
+
+  private handleReset = () => {
+    this.setState({ hasError: false, error: null });
+    window.location.reload();
+  };
 
   public render() {
     if (this.state.hasError) {
+      let errorMessage = "An unexpected system error has occurred.";
+      let isFirestoreError = false;
+
+      try {
+        if (this.state.error?.message) {
+          const parsed = JSON.parse(this.state.error.message);
+          if (parsed.error && parsed.operationType) {
+            isFirestoreError = true;
+            errorMessage = `Database Error: ${parsed.error} during ${parsed.operationType} on ${parsed.path || 'unknown path'}`;
+          }
+        }
+      } catch (e) {
+        // Not a JSON error message
+        errorMessage = this.state.error?.message || errorMessage;
+      }
+
       return (
-        <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6 font-sans">
-          <div className="max-w-md w-full bg-[#0a0a0a] border border-red-500/20 rounded-3xl p-8 text-center shadow-[0_0_50px_rgba(239,68,68,0.1)]">
-            <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-              <AlertTriangle size={40} className="text-red-500" />
+        <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 text-center">
+          <div className="absolute inset-0 bg-gradient-to-br from-rose-500/5 to-amber-600/5" />
+          
+          <div className="z-10 max-w-md w-full space-y-8">
+            <div className="w-20 h-20 bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-500 mx-auto shadow-[0_0_30px_rgba(244,63,94,0.2)]">
+              <AlertTriangle size={40} />
             </div>
-            <h1 className="text-2xl font-bold text-white mb-2">System Interruption</h1>
-            <p className="text-zinc-500 text-sm mb-8 leading-relaxed">
-              S+ encountered a critical error while processing your request. The self-healing engine is attempting to stabilize the core.
-            </p>
             
-            <div className="bg-black/40 rounded-xl p-4 mb-8 text-left border border-white/5">
-              <p className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest mb-1">Error Signature</p>
-              <p className="text-xs font-mono text-red-400 break-all">{this.state.error?.message || 'Unknown System Fault'}</p>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-black tracking-tighter text-white uppercase">System Exception</h1>
+              <p className="text-zinc-500 text-sm font-medium leading-relaxed">
+                The kernel has encountered a critical error and needs to restart.
+              </p>
             </div>
 
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={() => window.location.reload()}
-                className="w-full bg-red-500 hover:bg-red-400 text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+            <div className="p-4 bg-white/5 border border-white/10 rounded-2xl text-left overflow-hidden">
+              <p className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-2">Error Diagnostics</p>
+              <p className="text-xs font-mono text-rose-400 break-words leading-relaxed">
+                {errorMessage}
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={this.handleReset}
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-white text-black rounded-xl font-bold text-sm hover:bg-zinc-200 transition-all"
               >
                 <RefreshCw size={18} />
-                Restart Core System
+                Restart System
               </button>
-              <button 
-                onClick={() => this.setState({ hasError: false })}
-                className="w-full bg-white/5 hover:bg-white/10 text-zinc-400 font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+              <button
+                onClick={() => window.location.href = '/'}
+                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-white/5 text-white border border-white/10 rounded-xl font-bold text-sm hover:bg-white/10 transition-all"
               >
                 <Home size={18} />
-                Return to Dashboard
+                Go Home
               </button>
             </div>
+
+            <p className="text-[10px] text-zinc-600 font-medium pt-4">
+              If this persists, please contact system administration.
+            </p>
           </div>
         </div>
       );

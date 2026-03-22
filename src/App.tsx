@@ -44,6 +44,8 @@ import { ErrorRetryService } from './services/errorRetryService';
 import { Sparkles, Zap, Shield, Globe, Cpu, History, Terminal, Settings, Activity, TrendingUp, Clock, Layers, Target, Brain, Bell, CreditCard, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import ErrorBoundary from './components/ErrorBoundary';
+
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -318,6 +320,8 @@ export default function App() {
       if (doc.exists()) {
         setCurrentPlan(doc.data().plan as PlanType);
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `subscriptions/${user.uid}`);
     });
 
     return () => {
@@ -372,22 +376,34 @@ export default function App() {
       if (firebaseUser) {
         const userRef = doc(db, 'users', firebaseUser.uid);
         const userSnap = await getDoc(userRef);
-        const userData = userSnap.exists() ? userSnap.data() : null;
+        let userData = userSnap.exists() ? userSnap.data() : null;
         
         const isEmailAdmin = firebaseUser.email === 'mbidhan474@gmail.com';
-        const isRoleAdmin = userData?.role === 'admin';
         
-        setIsAdmin(isEmailAdmin && isRoleAdmin);
+        if (isEmailAdmin && !userData?.role) {
+          await setDoc(userRef, {
+            uid: firebaseUser.uid,
+            displayName: firebaseUser.displayName,
+            email: firebaseUser.email,
+            photoURL: firebaseUser.photoURL,
+            lastLogin: serverTimestamp(),
+            role: 'admin'
+          }, { merge: true });
+          // Refresh user data after setting role
+          const updatedSnap = await getDoc(userRef);
+          userData = updatedSnap.data();
+        } else {
+          await setDoc(userRef, {
+            uid: firebaseUser.uid,
+            displayName: firebaseUser.displayName,
+            email: firebaseUser.email,
+            photoURL: firebaseUser.photoURL,
+            lastLogin: serverTimestamp(),
+          }, { merge: true });
+        }
 
-        await setDoc(userRef, {
-          uid: firebaseUser.uid,
-          displayName: firebaseUser.displayName,
-          email: firebaseUser.email,
-          photoURL: firebaseUser.photoURL,
-          lastLogin: serverTimestamp(),
-          // Auto-assign admin role to the specific email if it's the first login or missing
-          ...(isEmailAdmin && !userData?.role ? { role: 'admin' } : {})
-        }, { merge: true });
+        const isRoleAdmin = userData?.role === 'admin';
+        setIsAdmin(isEmailAdmin && isRoleAdmin);
 
         // Initialize subscription if not exists
         const subRef = doc(db, 'subscriptions', firebaseUser.uid);
@@ -405,6 +421,7 @@ export default function App() {
         setUser(firebaseUser);
       } else {
         setUser(null);
+        setIsAdmin(false);
       }
       setLoading(false);
     }, (error) => {
@@ -815,7 +832,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <UpdatePrompt 
         show={showUpdatePrompt}
         onUpdate={handleUpdate}
@@ -1119,6 +1136,6 @@ export default function App() {
         }}
       />
       <PWAInstallPrompt />
-    </>
+    </ErrorBoundary>
   );
 }
