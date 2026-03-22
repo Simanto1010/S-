@@ -78,19 +78,34 @@ export default function CommandOrb({ onCommand, isProcessing }: CommandOrbProps)
     }
   };
 
-  const toggleListening = () => {
+  const toggleListening = async () => {
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
     } else {
       setMicError(null);
       try {
+        // Check permission state if possible
+        if (navigator.permissions && (navigator.permissions as any).query) {
+          const status = await navigator.permissions.query({ name: 'microphone' as any });
+          if (status.state === 'denied') {
+            setMicError('Microphone access is blocked in browser settings.');
+            toast.error('Microphone access is blocked. Please enable it in your browser settings.');
+            return;
+          }
+        }
+
         recognitionRef.current?.start();
         setIsListening(true);
         toast.info('Listening for command...');
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to start recognition', err);
-        toast.error('Voice system unavailable');
+        if (err.name === 'NotAllowedError' || err.message?.includes('not-allowed')) {
+          setMicError('Microphone access denied.');
+          await requestMicPermission();
+        } else {
+          toast.error('Voice system unavailable');
+        }
       }
     }
   };

@@ -6,15 +6,18 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
+  console.log('[PWA] Service Worker Installing');
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
+      console.log('[PWA] Caching essential assets');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
 });
 
 self.addEventListener('activate', (event) => {
+  console.log('[PWA] Service Worker Activating');
   event.waitUntil(
     Promise.all([
       self.clients.claim(),
@@ -22,7 +25,7 @@ self.addEventListener('activate', (event) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
             if (cacheName !== CACHE_NAME) {
-              console.log('[SW] Deleting old cache:', cacheName);
+              console.log('[PWA] Deleting old cache:', cacheName);
               return caches.delete(cacheName);
             }
           })

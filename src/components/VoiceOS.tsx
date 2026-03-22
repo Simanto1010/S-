@@ -68,26 +68,36 @@ export const VoiceOS: React.FC<VoiceOSProps> = ({ onCommandExecuted, context }) 
     );
   }, [handleCommand, voiceMode, isSpeaking, isProcessing]);
 
-  const toggleVoiceMode = () => {
+  const toggleVoiceMode = async () => {
     const newMode = !voiceMode;
     setVoiceMode(newMode);
     if (newMode) {
-      VoiceService.startListening();
-      setIsListening(true);
-      toast.success("Voice Mode Active - Listening for commands...");
+      try {
+        await VoiceService.startListening();
+        setIsListening(true);
+        toast.success("Voice Mode Active - Listening for commands...");
+      } catch (err) {
+        console.error("Failed to enable voice mode", err);
+        setVoiceMode(false);
+      }
     } else {
       VoiceService.stopListening();
       setIsListening(false);
     }
   };
 
-  const toggleListening = () => {
+  const toggleListening = async () => {
     if (isListening) {
       VoiceService.stopListening();
       setIsListening(false);
     } else {
-      VoiceService.startListening();
-      setIsListening(true);
+      try {
+        await VoiceService.startListening();
+        setIsListening(true);
+      } catch (err) {
+        console.error("Failed to start voice listening", err);
+        setIsListening(false);
+      }
     }
   };
 

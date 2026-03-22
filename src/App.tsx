@@ -24,6 +24,7 @@ import { SystemStatus } from './components/SystemStatus';
 import ErrorBoundary from './components/ErrorBoundary';
 import TaskSwipeQueue from './components/TaskSwipeQueue';
 import { VoiceOS } from './components/VoiceOS';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { PredictiveDashboard } from './components/PredictiveDashboard';
 import { TeamHub } from './components/TeamHub';
 import { orchestrateTask, getSmartSuggestions, getProactiveSuggestions, getDailyInsights, detectAutonomousOpportunities, generateAutonomousTask } from './services/aiService';
@@ -950,6 +951,7 @@ export default function App() {
           // Handle any side effects if needed
         }}
       />
+      <PWAInstallPrompt />
     </>
   );
 }

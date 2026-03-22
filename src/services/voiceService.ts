@@ -1,4 +1,5 @@
 import { GoogleGenAI, Modality } from "@google/genai";
+import { toast } from "sonner";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -45,17 +46,49 @@ export class VoiceService {
       this.isListeningState = false;
       if (event.error !== 'no-speech') {
         console.error("Speech recognition error", event.error);
+        if (event.error === 'not-allowed') {
+          toast.error("Microphone access denied. Please click the mic icon to grant permission.");
+        }
       }
       if (this.onEndCallback) this.onEndCallback();
     };
   }
 
-  static startListening() {
+  static async requestPermission(): Promise<boolean> {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(track => track.stop()); // Stop the stream immediately, we just wanted the permission
+      return true;
+    } catch (err) {
+      console.error("Microphone permission denied", err);
+      return false;
+    }
+  }
+
+  static async startListening() {
     if (this.recognition && !this.isListeningState) {
       try {
+        // Check permission state if possible
+        if (navigator.permissions && (navigator.permissions as any).query) {
+          const status = await navigator.permissions.query({ name: 'microphone' as any });
+          if (status.state === 'denied') {
+            toast.error("Microphone access is blocked. Please enable it in your browser settings.");
+            return;
+          }
+        }
+
         this.recognition.start();
-      } catch (e) {
-        // Silently handle start errors if already started
+      } catch (e: any) {
+        if (e.name === 'NotAllowedError' || e.message?.includes('not-allowed')) {
+          const granted = await this.requestPermission();
+          if (granted) {
+            try {
+              this.recognition.start();
+            } catch (retryErr) {
+              console.error("Retry failed", retryErr);
+            }
+          }
+        }
       }
     }
   }
