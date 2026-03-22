@@ -8,14 +8,21 @@
     <meta name="theme-color" content="#000000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    
+    <!-- Preload Critical Assets -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap">
   </head>
   <body style="margin: 0; background: #000;">
     <div id="root">
       <div id="initial-loader" style="position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 9999; font-family: sans-serif;">
-        <div style="width: 40px; height: 40px; border: 3px solid rgba(34, 211, 238, 0.1); border-top-color: #22d3ee; border-radius: 50%; animation: spin 1s linear infinite;"></div>
-        <div style="margin-top: 20px; color: #fff; font-size: 12px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.5;">S+ System Initializing</div>
+        <div style="width: 48px; height: 48px; border: 4px solid rgba(34, 211, 238, 0.1); border-top-color: #22d3ee; border-radius: 50%; animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;"></div>
+        <div style="margin-top: 24px; color: #fff; font-size: 11px; font-weight: 900; letter-spacing: 0.4em; text-transform: uppercase; opacity: 0.6; animation: pulse 2s ease-in-out infinite;">S+ System Initializing</div>
         <style>
           @keyframes spin { to { transform: rotate(360deg); } }
+          @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.7; } }
         </style>
       </div>
     </div>
@@ -39,24 +46,6 @@
       };
     </script>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(reg => {
-              console.log('[PWA] Service Worker Active', reg);
-              console.log('[PWA] PWA Ready');
-            })
-            .catch(err => {
-              console.error('[PWA] Service Worker registration failed', err);
-            });
-        });
-      }
-
-      window.addEventListener('beforeinstallprompt', (e) => {
-        console.log('[PWA] Install Prompt Available');
-      });
-    </script>
   </body>
 </html>
 

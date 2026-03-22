@@ -1,8 +1,10 @@
-const CACHE_NAME = 'splus-cache-v2';
+const CACHE_NAME = 'splus-cache-v3';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap',
+  'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap'
 ];
 
 self.addEventListener('install', (event) => {
@@ -40,14 +42,38 @@ self.addEventListener('fetch', (event) => {
   
   const url = new URL(event.request.url);
   
-  // Do NOT cache API calls, Firebase, or cross-origin requests
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api')) return;
-  if (url.pathname.includes('firestore')) return;
+  // Do NOT cache API calls, Firebase, or cross-origin requests (except fonts)
+  if (url.origin !== self.location.origin && !url.hostname.includes('fonts.googleapis.com') && !url.hostname.includes('fonts.gstatic.com')) {
+    return;
+  }
 
+  // Skip caching for API, Firestore, and Auth
+  if (url.pathname.startsWith('/api') || url.pathname.includes('firestore') || url.pathname.includes('identitytoolkit')) {
+    return;
+  }
+
+  // Network First for index.html to ensure latest version
+  if (url.pathname === '/' || url.pathname === '/index.html') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const clonedResponse = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clonedResponse));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for other assets
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
+        return networkResponse;
+      });
+      return cachedResponse || fetchPromise;
     })
   );
 });

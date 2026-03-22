@@ -1,33 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   auth, googleProvider, signInWithPopup, db, doc, setDoc, onSnapshot, collection, query, where, serverTimestamp, getDoc, updateDoc, addDoc, orderBy, limit, getDocs, handleFirestoreError, OperationType
 } from './firebase';
 import Layout from './components/Layout';
 import Auth from './components/Auth';
-import CommandOrb from './components/CommandOrb';
-import NexusBoard from './components/NexusBoard';
-import ExecutionConsole from './components/ExecutionConsole';
-import IdentityVault from './components/IdentityVault';
-import SettingsDrawer from './components/SettingsDrawer';
-import AutomationBuilder from './components/AutomationBuilder';
-import ResultPanel from './components/ResultPanel';
-import SystemHealthPanel from './components/SystemHealthPanel';
-import AIControlCenter from './components/AIControlCenter';
-import ProactiveAI from './components/ProactiveAI';
-import GoalManager from './components/GoalManager';
-import AutonomousCenter from './components/AutonomousCenter';
-import SubscriptionManager from './components/SubscriptionManager';
-import AdminPaymentVerification from './components/AdminPaymentVerification';
-import AdminGuard from './components/AdminGuard';
-import Usage from './components/Usage';
-import { SystemStatus } from './components/SystemStatus';
-import ErrorBoundary from './components/ErrorBoundary';
-import TaskSwipeQueue from './components/TaskSwipeQueue';
-import { VoiceOS } from './components/VoiceOS';
-import PWAInstallPrompt from './components/PWAInstallPrompt';
-import { PredictiveDashboard } from './components/PredictiveDashboard';
-import { TeamHub } from './components/TeamHub';
+import { UpdatePrompt } from './components/UpdatePrompt';
+import { VersionService, AppVersion } from './services/versionService';
+
+// Lazy load non-critical components
+const CommandOrb = lazy(() => import('./components/CommandOrb'));
+const NexusBoard = lazy(() => import('./components/NexusBoard'));
+const ExecutionConsole = lazy(() => import('./components/ExecutionConsole'));
+const IdentityVault = lazy(() => import('./components/IdentityVault'));
+const SettingsDrawer = lazy(() => import('./components/SettingsDrawer'));
+const AutomationBuilder = lazy(() => import('./components/AutomationBuilder'));
+const ResultPanel = lazy(() => import('./components/ResultPanel'));
+const SystemHealthPanel = lazy(() => import('./components/SystemHealthPanel'));
+const AIControlCenter = lazy(() => import('./components/AIControlCenter'));
+const ProactiveAI = lazy(() => import('./components/ProactiveAI'));
+const GoalManager = lazy(() => import('./components/GoalManager'));
+const AutonomousCenter = lazy(() => import('./components/AutonomousCenter'));
+const SubscriptionManager = lazy(() => import('./components/SubscriptionManager'));
+const AdminPaymentVerification = lazy(() => import('./components/AdminPaymentVerification'));
+const AdminGuard = lazy(() => import('./components/AdminGuard'));
+const Usage = lazy(() => import('./components/Usage'));
+const SystemStatus = lazy(() => import('./components/SystemStatus').then(m => ({ default: m.SystemStatus })));
+const TaskSwipeQueue = lazy(() => import('./components/TaskSwipeQueue'));
+const VoiceOS = lazy(() => import('./components/VoiceOS').then(m => ({ default: m.VoiceOS })));
+const PWAInstallPrompt = lazy(() => import('./components/PWAInstallPrompt'));
+const PredictiveDashboard = lazy(() => import('./components/PredictiveDashboard').then(m => ({ default: m.PredictiveDashboard })));
+const TeamHub = lazy(() => import('./components/TeamHub').then(m => ({ default: m.TeamHub })));
 import { orchestrateTask, getSmartSuggestions, getProactiveSuggestions, getDailyInsights, detectAutonomousOpportunities, generateAutonomousTask } from './services/aiService';
 import { ExecutionService } from './services/executionService';
 import { TemplateService } from './services/templateService';
@@ -72,6 +75,9 @@ export default function App() {
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
+  const [newVersion, setNewVersion] = useState<AppVersion | null>(null);
+  const [systemHealth, setSystemHealth] = useState<'healthy' | 'degraded' | 'down'>('healthy');
   const [metrics, setMetrics] = useState({
     successRate: 99.4,
     avgLatency: '142ms',
@@ -81,6 +87,101 @@ export default function App() {
     memory: 45,
     uptime: '14d 2h 12m'
   });
+
+  useEffect(() => {
+    // 1. System Health Check on Start
+    const runInitialHealthCheck = async () => {
+      try {
+        const results = await HealthCheckService.runFullCheck();
+        const isDown = results.some(r => r.status === 'down');
+        const isDegraded = results.some(r => r.status === 'degraded');
+        setSystemHealth(isDown ? 'down' : isDegraded ? 'degraded' : 'healthy');
+        
+        if (isDown) {
+          toast.error("System Issue Detected", {
+            description: "Some services are currently unavailable. Retrying...",
+          });
+        }
+      } catch (err) {
+        setSystemHealth('down');
+      }
+    };
+
+    // 2. Version Control & Auto Update
+    const unsubscribeVersion = VersionService.subscribeToVersion((versionData) => {
+      const current = VersionService.getCurrentVersion();
+      if (versionData.version !== current) {
+        setNewVersion(versionData);
+        setShowUpdatePrompt(true);
+        
+        // Force update if critical or version is too old
+        if (versionData.critical || !VersionService.isCompatible(current, versionData.minVersion)) {
+          toast.warning("Critical Update Required", {
+            description: "A mandatory system update is being applied.",
+          });
+        }
+      }
+    });
+
+    // 3. Service Worker Update Listener
+    const handleSWUpdate = () => {
+      setShowUpdatePrompt(true);
+    };
+    window.addEventListener('sw-update-available', handleSWUpdate);
+
+    // 4. Network Status Monitoring
+    const handleOnline = () => {
+      toast.success("Back Online", {
+        description: "Re-establishing system connections...",
+      });
+      runInitialHealthCheck();
+      // Trigger any pending syncs here
+    };
+    const handleOffline = () => {
+      toast.error("Connection Lost", {
+        description: "System is running in offline mode. Some features may be limited.",
+      });
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    runInitialHealthCheck();
+    
+    return () => {
+      unsubscribeVersion();
+      window.removeEventListener('sw-update-available', handleSWUpdate);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const handleUpdate = () => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then(reg => {
+        if (reg && reg.waiting) {
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+        window.location.reload();
+      });
+    } else {
+      window.location.reload();
+    }
+  };
+
+  useEffect(() => {
+    // Log performance metrics
+    if (window.performance) {
+      const loadTime = window.performance.now();
+      console.log(`[Kernel] App Load Time: ${loadTime.toFixed(2)}ms`);
+      
+      if (user) {
+        ActivityLogService.log(user.uid, `App loaded in ${loadTime.toFixed(2)}ms`, 'info', 'system', {
+          userAgent: navigator.userAgent,
+          platform: navigator.platform
+        });
+      }
+    }
+  }, [user]);
 
   useEffect(() => {
     const handler = (e: any) => {
@@ -138,7 +239,7 @@ export default function App() {
 
     // Real-time metrics (simulated but could be from a system collection)
     const fetchData = async () => {
-      try {
+      await ErrorRetryService.execute(async () => {
         // Run real health checks
         const healthResults = await HealthCheckService.runFullCheck();
         setHealthMetrics(healthResults);
@@ -148,11 +249,7 @@ export default function App() {
           const metricsData = await metricsRes.json();
           setMetrics(prev => ({ ...prev, ...metricsData }));
         }
-      } catch (error) {
-        if (error instanceof Error && error.message !== 'Failed to fetch') {
-          console.error('Error fetching metrics:', error);
-        }
-      }
+      }, { context: 'System Metrics', maxRetries: 2 });
     };
 
     fetchData();
@@ -203,14 +300,16 @@ export default function App() {
 
     // Fetch or Create Default Workspace
     const fetchWorkspace = async () => {
-      const q = query(collection(db, 'workspaces'), where('ownerId', '==', user.uid));
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        const id = await TeamService.createWorkspace(user.uid, `${user.displayName}'s Workspace`);
-        setCurrentWorkspaceId(id);
-      } else {
-        setCurrentWorkspaceId(snap.docs[0].id);
-      }
+      await ErrorRetryService.execute(async () => {
+        const q = query(collection(db, 'workspaces'), where('ownerId', '==', user.uid));
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          const id = await TeamService.createWorkspace(user.uid, `${user.displayName}'s Workspace`);
+          setCurrentWorkspaceId(id);
+        } else {
+          setCurrentWorkspaceId(snap.docs[0].id);
+        }
+      }, { context: 'Workspace Initialization' });
     };
     fetchWorkspace();
 
@@ -717,6 +816,14 @@ export default function App() {
 
   return (
     <>
+      <UpdatePrompt 
+        show={showUpdatePrompt}
+        onUpdate={handleUpdate}
+        onClose={() => setShowUpdatePrompt(false)}
+        isCritical={newVersion?.critical || (newVersion && !VersionService.isCompatible(VersionService.getCurrentVersion(), newVersion.minVersion))}
+        message={newVersion?.message}
+      />
+
       <Layout 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 
@@ -724,24 +831,49 @@ export default function App() {
         onSettingsClick={() => setIsSettingsOpen(true)}
         isAdmin={isAdmin}
       >
-      <SettingsDrawer 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)} 
-        user={user}
-        deferredPrompt={deferredPrompt}
-        onInstall={handleInstallApp}
-      />
+      <Suspense fallback={
+        <div className="flex items-center justify-center h-full">
+          <div className="w-8 h-8 border-2 border-cyan-500/20 border-top-cyan-500 rounded-full animate-spin" />
+        </div>
+      }>
+        <SettingsDrawer 
+          isOpen={isSettingsOpen} 
+          onClose={() => setIsSettingsOpen(false)} 
+          user={user}
+          deferredPrompt={deferredPrompt}
+          onInstall={handleInstallApp}
+        />
 
-      <AnimatePresence mode="wait">
-        {activeTab === 'dashboard' && (
-          <motion.div
-            key="dashboard"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="space-y-8 md:space-y-12 max-w-7xl mx-auto px-4 sm:px-6"
-          >
-            {/* Memory Insight Banner */}
+        <AnimatePresence mode="wait">
+          {activeTab === 'dashboard' && (
+            <motion.div
+              key="dashboard"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-8 md:space-y-12 max-w-7xl mx-auto px-4 sm:px-6"
+            >
+              {/* System Health Status Indicator */}
+              <div className="flex justify-end px-4 -mb-4">
+                <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${
+                  systemHealth === 'healthy' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
+                  systemHealth === 'degraded' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
+                  'bg-rose-500/10 border-rose-500/20 text-rose-500'
+                }`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${
+                    systemHealth === 'healthy' ? 'bg-emerald-500' :
+                    systemHealth === 'degraded' ? 'bg-amber-500' :
+                    'bg-rose-500'
+                  } ${systemHealth !== 'healthy' ? 'animate-pulse' : ''}`} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">
+                    {systemHealth === 'healthy' ? 'All Systems Working' : 
+                     systemHealth === 'degraded' ? 'Degraded Performance' : 
+                     'System Issue Detected'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Memory Insight Banner */}
             {memoryInsight && (
               <motion.div 
                 initial={{ opacity: 0, y: -20 }}
@@ -972,6 +1104,7 @@ export default function App() {
         {activeTab === 'vault' && <IdentityVault />}
         {activeTab === 'automation' && <AutomationBuilder />}
       </AnimatePresence>
+      </Suspense>
       </Layout>
 
       {/* S+ Voice OS Interface */}
