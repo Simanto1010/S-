@@ -33,13 +33,16 @@ try {
   // Configure Firestore with long polling to prevent idle stream timeouts in the iframe environment
   db = initializeFirestore(app, {
     experimentalForceLongPolling: true,
+    experimentalAutoDetectLongPolling: false,
     ignoreUndefinedProperties: true,
   }, firebaseConfig.firestoreDatabaseId);
 
   auth = getAuth(app);
-  console.log('[Firebase] Core Services Initialized');
+  console.log('[Firebase] Firebase initialized successfully');
+  console.log(`[Firebase] Connected to ${firebaseConfig.projectId}`);
 } catch (error) {
   console.error('[Firebase] Initialization Failed:', error);
+  toast.error('Firebase connection failed. Some features may be unavailable.');
   // Provide dummy objects to prevent top-level crashes
   // These will fail when used, but won't stop the app from mounting
   app = {} as any;

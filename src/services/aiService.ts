@@ -59,10 +59,10 @@ const callAIWithRetry = async (params: any, retries = 3, delay = 2000): Promise<
         SmartRouter.setQuotaLow(false);
         return response;
       } catch (error: any) {
-        if (error?.status === 'RESOURCE_EXHAUSTED' || error?.code === 429) {
-          // Set a 2-minute global cooldown if quota is exhausted
-          console.error(`[AI Core] Quota exhausted. Entering 2-minute cooldown.`);
-          globalCooldownUntil = Date.now() + 120000;
+        if (error?.status === 'RESOURCE_EXHAUSTED' || error?.code === 429 || error?.message?.includes('quota')) {
+          // Set a 5-minute global cooldown if quota is exhausted
+          console.error(`[AI Core] Quota exhausted. Entering 5-minute cooldown.`);
+          globalCooldownUntil = Date.now() + 300000;
           SmartRouter.setQuotaLow(true);
           throw error; // Let ErrorRetryService handle the retry or failure
         }
@@ -347,18 +347,30 @@ export const generateVideo = async (prompt: string, aspectRatio: "16:9" | "9:16"
 
 // 6. Memory System - Learning from history
 let smartSuggestionsCache: { data: string[], timestamp: number } | null = null;
-const SUGGESTIONS_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+const SUGGESTIONS_CACHE_DURATION = 60 * 60 * 1000; // 1 hour
 
 export const getSmartSuggestions = async (history: any[] = []) => {
+  const userId = auth.currentUser?.uid || 'system';
+  const lastRunKey = `splus_last_run_suggestions_${userId}`;
+  const lastRun = localStorage.getItem(lastRunKey);
+  const now = Date.now();
+
   // Check cache first
-  if (smartSuggestionsCache && (Date.now() - smartSuggestionsCache.timestamp < SUGGESTIONS_CACHE_DURATION)) {
+  if (smartSuggestionsCache && (now - smartSuggestionsCache.timestamp < SUGGESTIONS_CACHE_DURATION)) {
     return smartSuggestionsCache.data;
   }
 
-  // Check global cooldown
-  if (Date.now() < globalCooldownUntil) {
+  // Prevent running more than once every 15 minutes to save quota
+  if (lastRun && (now - parseInt(lastRun) < 15 * 60 * 1000)) {
     return smartSuggestionsCache?.data || [];
   }
+
+  // Check global cooldown
+  if (now < globalCooldownUntil) {
+    return smartSuggestionsCache?.data || [];
+  }
+
+  localStorage.setItem(lastRunKey, now.toString());
 
   const historyContext = history.length > 0 
     ? `Based on these past actions: ${history.slice(-10).map(h => h.command).join(', ')}` 
@@ -424,11 +436,27 @@ export const getProactiveSuggestions = async (context: {
   timeOfDay: string 
 }) => {
   const userId = auth.currentUser?.uid || 'system';
-  ActivityLogService.log(userId, 'Generating proactive suggestions', 'info', 'ai');
+  const lastRunKey = `splus_last_run_proactive_${userId}`;
+  const lastRun = localStorage.getItem(lastRunKey);
+  const now = Date.now();
+
   // Check cache first
-  if (proactiveCache && (Date.now() - proactiveCache.timestamp < CACHE_DURATION)) {
+  if (proactiveCache && (now - proactiveCache.timestamp < CACHE_DURATION)) {
     return proactiveCache.data;
   }
+
+  // Prevent running more than once every 10 minutes
+  if (lastRun && (now - parseInt(lastRun) < 10 * 60 * 1000)) {
+    return proactiveCache?.data || [];
+  }
+
+  // Check global cooldown
+  if (now < globalCooldownUntil) {
+    return proactiveCache?.data || [];
+  }
+
+  ActivityLogService.log(userId, 'Generating proactive suggestions', 'info', 'ai');
+  localStorage.setItem(lastRunKey, now.toString());
 
   const historyContext = context.history.length > 0 
     ? `Recent Activity: ${context.history.slice(-10).map(h => h.command).join(', ')}` 
@@ -503,13 +531,28 @@ let dailyInsightsCache: { data: any, timestamp: number, date: string } | null = 
 
 export const getDailyInsights = async (history: any[]) => {
   const userId = auth.currentUser?.uid || 'system';
-  ActivityLogService.log(userId, 'Generating daily AI insights', 'info', 'ai');
+  const lastRunKey = `splus_last_run_insights_${userId}`;
+  const lastRun = localStorage.getItem(lastRunKey);
+  const now = Date.now();
   const today = new Date().toISOString().split('T')[0];
   
   // Check cache first
-  if (dailyInsightsCache && dailyInsightsCache.date === today && (Date.now() - dailyInsightsCache.timestamp < 3600000)) {
+  if (dailyInsightsCache && dailyInsightsCache.date === today && (now - dailyInsightsCache.timestamp < 3600000)) {
     return dailyInsightsCache.data;
   }
+
+  // Prevent running more than once every 30 minutes
+  if (lastRun && (now - parseInt(lastRun) < 30 * 60 * 1000)) {
+    return dailyInsightsCache?.data || null;
+  }
+
+  // Check global cooldown
+  if (now < globalCooldownUntil) {
+    return dailyInsightsCache?.data || null;
+  }
+
+  ActivityLogService.log(userId, 'Generating daily AI insights', 'info', 'ai');
+  localStorage.setItem(lastRunKey, now.toString());
 
   const todaysHistory = history.filter(h => h.timestamp?.toDate?.().toISOString().startsWith(today) || h.timestamp?.startsWith?.(today));
 
@@ -564,10 +607,27 @@ export const detectAutonomousOpportunities = async (context: {
   goals: any[],
   lastActivity: string
 }) => {
+  const userId = auth.currentUser?.uid || 'system';
+  const lastRunKey = `splus_last_run_opps_${userId}`;
+  const lastRun = localStorage.getItem(lastRunKey);
+  const now = Date.now();
+
   // Check cache first (30 min duration)
-  if (opportunityCache && (Date.now() - opportunityCache.timestamp < 1800000)) {
+  if (opportunityCache && (now - opportunityCache.timestamp < 1800000)) {
     return opportunityCache.data;
   }
+
+  // Prevent running more than once every 20 minutes
+  if (lastRun && (now - parseInt(lastRun) < 20 * 60 * 1000)) {
+    return opportunityCache?.data || [];
+  }
+
+  // Check global cooldown
+  if (now < globalCooldownUntil) {
+    return opportunityCache?.data || [];
+  }
+
+  localStorage.setItem(lastRunKey, now.toString());
 
   try {
     const response = await callAIWithRetry({

@@ -24,6 +24,12 @@ export class SystemHealthService {
    * Logs a system error and checks for auto-debugging triggers
    */
   static async logError(service: string, error: string, context: any = {}) {
+    // Skip logging if it's a quota exhaustion error to prevent spamming
+    if (error.includes('RESOURCE_EXHAUSTED') || error.includes('429') || error.includes('quota')) {
+      console.warn(`[SystemHealth] Quota limited in ${service}. Skipping log to prevent spam.`);
+      return;
+    }
+
     const user = auth.currentUser;
     if (!user) return;
 
