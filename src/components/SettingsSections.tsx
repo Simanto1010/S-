@@ -5,14 +5,17 @@ import { toast } from 'sonner';
 
 interface SectionProps {
   user: any;
+  profile?: any;
   settings: any;
   onUpdate: (data: any) => Promise<void>;
 }
 
-export const ProfileSettings = ({ user, settings, onUpdate }: SectionProps) => {
+export const ProfileSettings = ({ user, profile, settings, onUpdate }: SectionProps) => {
   const [name, setName] = useState(settings?.displayName || user?.displayName || '');
   const [email, setEmail] = useState(settings?.email || user?.email || '');
   const [isSaving, setIsSaving] = useState(false);
+
+  const roleLabel = profile?.role === 'admin' ? 'System Administrator' : 'Standard User';
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -37,7 +40,7 @@ export const ProfileSettings = ({ user, settings, onUpdate }: SectionProps) => {
         </div>
         <div className="text-center">
           <p className="text-lg font-bold">{name}</p>
-          <p className="text-xs text-zinc-500">System Administrator</p>
+          <p className="text-xs text-zinc-500">{roleLabel}</p>
         </div>
       </div>
 

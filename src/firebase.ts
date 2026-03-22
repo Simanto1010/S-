@@ -131,3 +131,18 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
+
+export const logAdminAction = async (email: string, action: string, status: 'success' | 'failed' | 'denied', details?: string) => {
+  try {
+    await addDoc(collection(db, 'adminLogs'), {
+      email,
+      action,
+      status,
+      details: details || '',
+      timestamp: serverTimestamp(),
+      adminId: auth.currentUser?.uid || 'anonymous'
+    });
+  } catch (error) {
+    console.error('Failed to log admin action:', error);
+  }
+};

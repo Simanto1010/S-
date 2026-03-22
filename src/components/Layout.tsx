@@ -54,9 +54,9 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSett
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-cyan-500/30 overflow-hidden flex">
+    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-cyan-500/30 overflow-hidden flex flex-col lg:flex-row">
       {/* Sidebar - Desktop */}
-      <aside className="hidden lg:flex flex-col w-64 border-r border-white/5 bg-[#0a0a0a] z-50">
+      <aside className="hidden lg:flex flex-col w-64 border-r border-white/5 bg-[#0a0a0a] z-50 shrink-0">
         <div className="p-8">
           <div className="flex items-center gap-3 mb-12">
             <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-lg flex items-center justify-center shadow-[0_0_20px_rgba(34,211,238,0.3)]">
@@ -103,14 +103,19 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSett
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-h-screen relative overflow-hidden">
-        <header className="h-20 border-b border-white/5 flex items-center justify-between px-6 lg:px-12 bg-[#050505]/80 backdrop-blur-xl sticky top-0 z-40">
-          <div className="flex items-center gap-4">
+        <header className="h-16 md:h-20 border-b border-white/5 flex items-center justify-between px-4 md:px-6 lg:px-12 bg-[#050505]/80 backdrop-blur-xl sticky top-0 z-40">
+          <div className="flex items-center gap-3 md:gap-4">
             <button 
               onClick={() => setIsMobileMenuOpen(true)}
-              className="lg:hidden p-2 text-zinc-400 hover:text-white"
+              className="lg:hidden p-2 text-zinc-400 hover:text-white transition-colors"
             >
-              <Menu size={24} />
+              <Menu size={20} className="md:w-6 md:h-6" />
             </button>
+            <div className="flex items-center gap-3 lg:hidden">
+              <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-lg flex items-center justify-center">
+                <span className="text-lg font-black italic">S+</span>
+              </div>
+            </div>
             <div className="hidden md:flex items-center gap-4">
               <h2 className="text-lg font-semibold capitalize">{activeTab.replace('-', ' ')}</h2>
               <div className="h-4 w-[1px] bg-white/10" />
@@ -138,7 +143,7 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSett
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 lg:p-12 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-12 custom-scrollbar">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}

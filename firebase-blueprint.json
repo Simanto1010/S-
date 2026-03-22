@@ -9,6 +9,7 @@
         "displayName": { "type": "string" },
         "email": { "type": "string" },
         "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "User role for access control" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email"]
@@ -265,6 +266,21 @@
         "storageUsed": { "type": "number" }
       },
       "required": ["userId", "month"]
+    },
+    "AdminLog": {
+      "title": "Admin Action Log",
+      "description": "Logs of admin activities and security attempts.",
+      "type": "object",
+      "properties": {
+        "adminId": { "type": "string" },
+        "email": { "type": "string" },
+        "action": { "type": "string" },
+        "status": { "type": "string", "enum": ["success", "failed", "denied"] },
+        "details": { "type": "string" },
+        "ip": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "action", "status", "timestamp"]
     }
   },
   "firestore": {
@@ -339,6 +355,10 @@
     "/usage/{usageId}": {
       "schema": "Usage",
       "description": "User usage tracking"
+    },
+    "/adminLogs/{logId}": {
+      "schema": "AdminLog",
+      "description": "Admin security and action logs"
     }
   }
 }

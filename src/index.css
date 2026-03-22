@@ -8,7 +8,26 @@
 
 @layer base {
   body {
-    @apply bg-[#050505] text-white antialiased;
+    @apply bg-[#050505] text-white antialiased overflow-x-hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input, button, textarea, select {
+    @apply focus:outline-none;
+  }
+}
+
+@layer components {
+  .responsive-container {
+    @apply w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  .glass-panel {
+    @apply bg-white/5 border border-white/10 backdrop-blur-xl rounded-3xl;
+  }
+
+  .mobile-text-fix {
+    @apply text-base sm:text-lg md:text-xl lg:text-2xl;
   }
 }
 

@@ -382,21 +382,21 @@ export default function SubscriptionManager({ user }: SubscriptionManagerProps) 
                   </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl mb-8 flex flex-col items-center">
-                  {/* UPI QR Code Placeholder - In a real app, replace with actual QR image URL */}
-                  <div className="w-64 h-64 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden relative">
+                <div className="bg-white p-4 sm:p-6 rounded-2xl mb-8 flex flex-col items-center w-full max-w-sm mx-auto">
+                  {/* UPI QR Code Placeholder */}
+                  <div className="w-full aspect-square max-w-[250px] bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden relative shadow-inner">
                     <img 
-                      src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=8389084579@slc%26pn=Simanto%20Mondal%26am=25%26cu=INR" 
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa=8389084579@slc%26pn=Simanto%20Mondal%26am=${selectedPlan === 'monthly' ? 25 : 250}%26cu=INR`}
                       alt="UPI QR Code"
-                      className="w-full h-full object-contain"
+                      className="w-full h-full object-contain p-2"
                     />
                     <div className="absolute inset-0 flex items-center justify-center bg-black/5 pointer-events-none">
-                      <Smartphone className="w-12 h-12 text-black/20" />
+                      <Smartphone className="w-10 h-10 text-black/10" />
                     </div>
                   </div>
-                  <div className="mt-4 text-center">
-                    <p className="text-black font-bold text-lg">₹{selectedPlan === 'monthly' ? 25 : 250}</p>
-                    <p className="text-black/40 text-xs font-mono">8389084579@slc</p>
+                  <div className="mt-6 text-center">
+                    <p className="text-black font-black text-2xl mb-1">₹{selectedPlan === 'monthly' ? 25 : 250}</p>
+                    <p className="text-black/60 text-sm font-mono bg-black/5 px-3 py-1 rounded-full">8389084579@slc</p>
                   </div>
                 </div>
 

@@ -92,6 +92,41 @@ async function startServer() {
     }
   });
 
+  // Admin OTP API
+  const otpStore = new Map<string, { otp: string, expires: number }>();
+
+  app.post("/api/admin/send-otp", (req, res) => {
+    const { email } = req.body;
+    if (email !== "mbidhan474@gmail.com") {
+      return res.status(403).json({ error: "Access Denied" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    otpStore.set(email, { otp, expires: Date.now() + 5 * 60 * 1000 }); // 5 min expiry
+
+    console.log(`[ADMIN OTP] OTP for ${email}: ${otp}`);
+    
+    // In a real app, send email here
+    // For now, we simulate success
+    res.json({ success: true, message: "OTP sent to your email (check server logs for demo)" });
+  });
+
+  app.post("/api/admin/verify-otp", (req, res) => {
+    const { email, otp } = req.body;
+    const stored = otpStore.get(email);
+
+    if (!stored || stored.expires < Date.now()) {
+      return res.status(400).json({ error: "OTP expired or not found" });
+    }
+
+    if (stored.otp === otp) {
+      otpStore.delete(email);
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ error: "Invalid OTP" });
+    }
+  });
+
   // Serve bridge.py as a static file
   app.get("/bridge.py", (req, res) => {
     const appUrl = process.env.APP_URL || `http://localhost:3000`;

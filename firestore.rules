@@ -62,8 +62,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "mbidhan474@gmail.com" && request.auth.token.email_verified == true));
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
+         request.auth.token.email == "mbidhan474@gmail.com" && 
+         request.auth.token.email_verified == true);
     }
 
     function isWorkspaceMember(workspaceId) {
@@ -227,6 +228,12 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isUserOwned(request.resource.data);
       allow update: if isAdmin(); // Only admin can approve/reject
       allow delete: if isAdmin();
+    }
+
+    match /adminLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated(); // Allow logging attempts
+      allow update, delete: if false; // Immutable logs
     }
   }
 }

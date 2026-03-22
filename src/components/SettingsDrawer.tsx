@@ -26,16 +26,18 @@ interface SettingsDrawerProps {
 export default function SettingsDrawer({ isOpen, onClose, user, deferredPrompt, onInstall }: SettingsDrawerProps) {
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [settings, setSettings] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (isOpen && user) {
       const settingsRef = doc(db, 'settings', user.uid);
-      const unsubscribe = onSnapshot(settingsRef, (doc) => {
+      const profileRef = doc(db, 'users', user.uid);
+
+      const unsubSettings = onSnapshot(settingsRef, (doc) => {
         if (doc.exists()) {
           setSettings(doc.data());
         } else {
-          // Initialize default settings
           const defaultSettings = {
             userId: user.uid,
             displayName: user.displayName,
@@ -55,11 +57,22 @@ export default function SettingsDrawer({ isOpen, onClose, user, deferredPrompt, 
           setDoc(settingsRef, defaultSettings);
           setSettings(defaultSettings);
         }
-        setIsLoading(false);
       }, (error) => {
         handleFirestoreError(error, 'get', `settings/${user.uid}`);
       });
-      return unsubscribe;
+
+      const unsubProfile = onSnapshot(profileRef, (doc) => {
+        if (doc.exists()) {
+          setProfile(doc.data());
+        }
+      }, (error) => {
+        handleFirestoreError(error, 'get', `users/${user.uid}`);
+      });
+
+      return () => {
+        unsubSettings();
+        unsubProfile();
+      };
     }
   }, [isOpen, user]);
 
@@ -218,7 +231,7 @@ export default function SettingsDrawer({ isOpen, onClose, user, deferredPrompt, 
                   animate={{ opacity: 1, x: 0 }}
                   className="h-full"
                 >
-                  {ActiveComponent && <ActiveComponent user={user} settings={settings} onUpdate={updateSettings} />}
+                  {ActiveComponent && <ActiveComponent user={user} profile={profile} settings={settings} onUpdate={updateSettings} />}
                 </motion.div>
               )}
             </div>

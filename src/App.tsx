@@ -19,6 +19,7 @@ import GoalManager from './components/GoalManager';
 import AutonomousCenter from './components/AutonomousCenter';
 import SubscriptionManager from './components/SubscriptionManager';
 import AdminPaymentVerification from './components/AdminPaymentVerification';
+import AdminGuard from './components/AdminGuard';
 import Usage from './components/Usage';
 import { SystemStatus } from './components/SystemStatus';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -43,6 +44,7 @@ import { toast } from 'sonner';
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [splashLoading, setSplashLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -260,16 +262,32 @@ export default function App() {
   }, [user, commandHistory.length, goals.length]);
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      setSplashLoading(false);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
-        setIsAdmin(firebaseUser.email === 'mbidhan474@gmail.com');
         const userRef = doc(db, 'users', firebaseUser.uid);
+        const userSnap = await getDoc(userRef);
+        const userData = userSnap.exists() ? userSnap.data() : null;
+        
+        const isEmailAdmin = firebaseUser.email === 'mbidhan474@gmail.com';
+        const isRoleAdmin = userData?.role === 'admin';
+        
+        setIsAdmin(isEmailAdmin && isRoleAdmin);
+
         await setDoc(userRef, {
           uid: firebaseUser.uid,
           displayName: firebaseUser.displayName,
           email: firebaseUser.email,
           photoURL: firebaseUser.photoURL,
           lastLogin: serverTimestamp(),
+          // Auto-assign admin role to the specific email if it's the first login or missing
+          ...(isEmailAdmin && !userData?.role ? { role: 'admin' } : {})
         }, { merge: true });
 
         // Initialize subscription if not exists
@@ -667,14 +685,28 @@ export default function App() {
     }
   };
 
-  if (loading) {
+  if (splashLoading || loading) {
     return (
-      <div className="min-h-screen bg-[#050505] flex items-center justify-center">
+      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-blue-600/5" />
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-500/10 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" />
+        
         <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-          className="w-12 h-12 border-2 border-cyan-500 border-t-transparent rounded-full"
-        />
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+          className="z-10 text-center"
+        >
+          <div className="w-24 h-24 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-2xl flex items-center justify-center shadow-[0_0_40px_rgba(34,211,238,0.3)] mx-auto mb-8">
+            <span className="text-4xl font-black italic text-white">S+</span>
+          </div>
+          <h1 className="text-4xl font-black tracking-tighter mb-2 uppercase text-white">SYSTEM PLUS</h1>
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
+            <p className="text-xs text-zinc-500 font-bold uppercase tracking-[0.3em]">Initializing System</p>
+          </div>
+        </motion.div>
       </div>
     );
   }
@@ -707,7 +739,7 @@ export default function App() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="space-y-12"
+            className="space-y-8 md:space-y-12 max-w-7xl mx-auto px-4 sm:px-6"
           >
             {/* Memory Insight Banner */}
             {memoryInsight && (
@@ -716,30 +748,30 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 className="p-4 bg-cyan-500/10 border border-cyan-500/20 rounded-2xl flex items-start gap-4"
               >
-                <div className="p-2 bg-cyan-500/20 rounded-lg text-cyan-400">
+                <div className="p-2 bg-cyan-500/20 rounded-lg text-cyan-400 shrink-0">
                   <Brain size={20} />
                 </div>
                 <div>
                   <p className="text-sm font-medium text-cyan-400">Long-Term Memory Insight</p>
-                  <p className="text-sm text-zinc-400 mt-1">{memoryInsight}</p>
+                  <p className="text-xs sm:text-sm text-zinc-400 mt-1">{memoryInsight}</p>
                 </div>
               </motion.div>
             )}
 
-            <div className="flex flex-col items-center text-center">
-              <h1 className="text-4xl font-black tracking-tight mb-4">Welcome back, {user.displayName?.split(' ')[0]}</h1>
-              <p className="text-zinc-500">System is online. {metrics.activeConnectors} connectors active across 4 devices.</p>
+            <div className="flex flex-col items-center text-center px-4">
+              <h1 className="text-3xl md:text-4xl font-black tracking-tight mb-4">Welcome back, {user.displayName?.split(' ')[0]}</h1>
+              <p className="text-sm md:text-base text-zinc-500 max-w-2xl">System is online. {metrics.activeConnectors} connectors active across 4 devices.</p>
             </div>
 
             {/* Swipe Queue for Autonomous Tasks */}
             {autonomousTasks.length > 0 && (
-              <div className="max-w-xl mx-auto w-full space-y-4">
+              <div className="max-w-xl mx-auto w-full space-y-4 px-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold flex items-center gap-2">
+                  <h3 className="text-base md:text-lg font-bold flex items-center gap-2">
                     <Bell className="text-cyan-400" size={20} />
-                    Autonomous Approval Queue
+                    Approval Queue
                   </h3>
-                  <span className="text-xs font-mono text-zinc-500">{autonomousTasks.length} Pending</span>
+                  <span className="text-[10px] md:text-xs font-mono text-zinc-500">{autonomousTasks.length} Pending</span>
                 </div>
                 <TaskSwipeQueue 
                   tasks={autonomousTasks}
@@ -749,41 +781,41 @@ export default function App() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white/5 border border-white/5 rounded-3xl p-6 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-400">
-                  <TrendingUp size={24} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 px-4">
+              <div className="bg-white/5 border border-white/5 rounded-3xl p-5 md:p-6 flex items-center gap-4">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center text-cyan-400 shrink-0">
+                  <TrendingUp size={20} className="md:w-6 md:h-6" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{metrics.successRate}%</p>
-                  <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Success Rate</p>
+                  <p className="text-xl md:text-2xl font-bold">{metrics.successRate}%</p>
+                  <p className="text-[9px] md:text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Success Rate</p>
                 </div>
               </div>
-              <div className="bg-white/5 border border-white/5 rounded-3xl p-6 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400">
-                  <Clock size={24} />
+              <div className="bg-white/5 border border-white/5 rounded-3xl p-5 md:p-6 flex items-center gap-4">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0">
+                  <Clock size={20} className="md:w-6 md:h-6" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{typeof metrics.avgLatency === 'number' ? `${metrics.avgLatency}ms` : metrics.avgLatency}</p>
-                  <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Avg Latency</p>
+                  <p className="text-xl md:text-2xl font-bold">{typeof metrics.avgLatency === 'number' ? `${metrics.avgLatency}ms` : metrics.avgLatency}</p>
+                  <p className="text-[9px] md:text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Avg Latency</p>
                 </div>
               </div>
-              <div className="bg-white/5 border border-white/5 rounded-3xl p-6 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                  <Layers size={24} />
+              <div className="bg-white/5 border border-white/5 rounded-3xl p-5 md:p-6 flex items-center gap-4">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Layers size={20} className="md:w-6 md:h-6" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{metrics.activeConnectors}</p>
-                  <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Active Plugins</p>
+                  <p className="text-xl md:text-2xl font-bold">{metrics.activeConnectors}</p>
+                  <p className="text-[9px] md:text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Active Plugins</p>
                 </div>
               </div>
-              <div className="bg-white/5 border border-white/5 rounded-3xl p-6 flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-400">
-                  <Activity size={24} />
+              <div className="bg-white/5 border border-white/5 rounded-3xl p-5 md:p-6 flex items-center gap-4">
+                <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-purple-500/10 flex items-center justify-center text-purple-400 shrink-0">
+                  <Activity size={20} className="md:w-6 md:h-6" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{metrics.taskLoad}</p>
-                  <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">System Load</p>
+                  <p className="text-xl md:text-2xl font-bold">{metrics.taskLoad}</p>
+                  <p className="text-[9px] md:text-[10px] text-zinc-500 uppercase font-bold tracking-widest">System Load</p>
                 </div>
               </div>
             </div>
@@ -926,7 +958,9 @@ export default function App() {
           <SubscriptionManager user={user} />
         )}
         {activeTab === 'admin-payments' && isAdmin && (
-          <AdminPaymentVerification />
+          <AdminGuard>
+            <AdminPaymentVerification />
+          </AdminGuard>
         )}
         {activeTab === 'usage' && (
           <Usage 
