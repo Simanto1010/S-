@@ -24,16 +24,15 @@ export class VersionService {
     return onSnapshot(doc(db, VERSION_DOC_PATH), (snapshot) => {
       if (snapshot.exists()) {
         callback(snapshot.data() as AppVersion);
-      } else {
-        // Initialize version doc if it doesn't exist (Admin only usually, but for safety)
-        this.initializeVersionDoc();
       }
     }, (error) => {
-      console.error('Version subscription error:', error);
+      // Log error but don't crash, especially for permission issues on public docs
+      console.warn('Version subscription error:', error.message);
     });
   }
 
-  private static async initializeVersionDoc() {
+  static async initializeVersionDoc(isAdmin: boolean) {
+    if (!isAdmin) return;
     try {
       const versionDoc = doc(db, VERSION_DOC_PATH);
       const snap = await getDoc(versionDoc);

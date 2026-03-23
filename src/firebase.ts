@@ -110,8 +110,16 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  
+  // Ignore benign idle stream timeout errors which are common in iframe environments
+  if (errorMessage.includes('Disconnecting idle stream') || errorMessage.includes('Timed out waiting for new targets')) {
+    console.warn('[Firebase] Benign idle stream timeout ignored:', errorMessage);
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errorMessage,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,

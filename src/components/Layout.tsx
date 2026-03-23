@@ -117,27 +117,27 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSett
               </div>
             </div>
             <div className="hidden md:flex items-center gap-4">
-              <h2 className="text-lg font-semibold capitalize">{activeTab.replace('-', ' ')}</h2>
+              <h2 className="text-base md:text-lg font-semibold capitalize truncate max-w-[150px] md:max-w-none">{activeTab.replace('-', ' ')}</h2>
               <div className="h-4 w-[1px] bg-white/10" />
-              <p className="text-sm text-zinc-500">Universal Connector Active</p>
+              <p className="text-xs md:text-sm text-zinc-500 truncate">Universal Connector Active</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3 lg:gap-6">
-            <div className="hidden sm:flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-xs font-mono text-emerald-500/80 tracking-widest uppercase">System Online</span>
+          <div className="flex items-center gap-2 md:gap-6">
+            <div className="flex items-center gap-1.5 md:gap-2 bg-emerald-500/5 px-2 md:px-3 py-1 rounded-full border border-emerald-500/10">
+              <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[10px] md:text-xs font-mono text-emerald-500/80 tracking-widest uppercase whitespace-nowrap">System Online</span>
             </div>
-            <div className="flex items-center gap-2">
-              <button className="p-2 text-zinc-400 hover:text-white transition-colors relative">
-                <Bell size={20} />
-                <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-cyan-500 rounded-full" />
+            <div className="flex items-center gap-1 md:gap-2">
+              <button className="p-1.5 md:p-2 text-zinc-400 hover:text-white transition-colors relative">
+                <Bell size={18} className="md:w-5 md:h-5" />
+                <span className="absolute top-1.5 right-1.5 md:top-2 md:right-2 w-1.5 h-1.5 bg-cyan-500 rounded-full" />
               </button>
               <button 
                 onClick={onSettingsClick}
-                className="p-2 text-zinc-400 hover:text-white transition-colors"
+                className="p-1.5 md:p-2 text-zinc-400 hover:text-white transition-colors"
               >
-                <Settings size={20} />
+                <Settings size={18} className="md:w-5 md:h-5" />
               </button>
             </div>
           </div>

@@ -14,34 +14,55 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
  */
 let globalCooldownUntil = 0;
 
+export const isAiCooldownActive = () => Date.now() < globalCooldownUntil;
+export const getCooldownRemaining = () => Math.max(0, Math.ceil((globalCooldownUntil - Date.now()) / 1000));
+
 /**
  * Helper to parse JSON safely, handling potential markdown blocks or truncation
  */
 const safeJsonParse = (text: string | undefined, fallback: any = []) => {
   if (!text) return fallback;
+  
+  const cleanText = (t: string) => {
+    // Try to extract JSON from markdown blocks if present
+    const jsonMatch = t.match(/```json\n([\s\S]*?)\n```/) || t.match(/```([\s\S]*?)```/);
+    return jsonMatch ? jsonMatch[1].trim() : t.trim();
+  };
+
+  const repairedText = cleanText(text);
+
   try {
-    // Try direct parse first
-    return JSON.parse(text);
+    return JSON.parse(repairedText);
   } catch (e) {
     try {
-      // Try to extract JSON from markdown blocks if present
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/```([\s\S]*?)```/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[1]);
+      // Attempt to repair truncated JSON by closing open brackets/braces
+      let stack: string[] = [];
+      let inString = false;
+      let escaped = false;
+      let repaired = repairedText;
+
+      for (let i = 0; i < repaired.length; i++) {
+        const char = repaired[i];
+        if (escaped) { escaped = false; continue; }
+        if (char === '\\') { escaped = true; continue; }
+        if (char === '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (char === '{' || char === '[') stack.push(char);
+        else if (char === '}') { if (stack[stack.length - 1] === '{') stack.pop(); }
+        else if (char === ']') { if (stack[stack.length - 1] === '[') stack.pop(); }
       }
-      
-      // If it's still failing, it might be truncated. 
-      // Very crude attempt to close a truncated JSON array/object
-      if (text.trim().startsWith('[') && !text.trim().endsWith(']')) {
-        return JSON.parse(text.trim() + ']');
+
+      if (inString) repaired += '"';
+      while (stack.length > 0) {
+        const last = stack.pop();
+        repaired += (last === '{' ? '}' : ']');
       }
-      if (text.trim().startsWith('{') && !text.trim().endsWith('}')) {
-        return JSON.parse(text.trim() + '}');
-      }
+
+      return JSON.parse(repaired);
     } catch (innerError) {
-      console.error("[AI Core] Failed to parse JSON even with recovery:", text.substring(0, 100) + "...");
+      console.error("[AI Core] Failed to parse JSON even with recovery:", repairedText.substring(0, 100) + "...");
+      return fallback;
     }
-    return fallback;
   }
 };
 
