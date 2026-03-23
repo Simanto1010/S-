@@ -1,4 +1,4 @@
-const CACHE_NAME = 'splus-cache-v3';
+const CACHE_NAME = 'splus-kernel-v4.1';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -8,26 +8,26 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
-  console.log('[PWA] Service Worker Installing');
+  console.log('[PWA] Kernel Installing');
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[PWA] Caching essential assets');
+      console.log('[PWA] Caching Kernel Assets');
       return cache.addAll(ASSETS_TO_CACHE);
     })
   );
 });
 
 self.addEventListener('activate', (event) => {
-  console.log('[PWA] Service Worker Activating');
+  console.log('[PWA] Kernel Activating');
   event.waitUntil(
     Promise.all([
       self.clients.claim(),
       caches.keys().then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME) {
-              console.log('[PWA] Deleting old cache:', cacheName);
+            if (cacheName !== CACHE_NAME && cacheName.startsWith('splus-')) {
+              console.log('[PWA] Purging Legacy Cache:', cacheName);
               return caches.delete(cacheName);
             }
           })
@@ -48,7 +48,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Skip caching for API, Firestore, and Auth
-  if (url.pathname.startsWith('/api') || url.pathname.includes('firestore') || url.pathname.includes('identitytoolkit')) {
+  if (
+    url.pathname.startsWith('/api') || 
+    url.pathname.includes('firestore') || 
+    url.pathname.includes('identitytoolkit') ||
+    url.pathname.includes('google-analytics')
+  ) {
     return;
   }
 
@@ -70,12 +75,21 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request).then((networkResponse) => {
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
+        if (networkResponse.ok) {
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse.clone()));
+        }
         return networkResponse;
       });
       return cachedResponse || fetchPromise;
     })
   );
+});
+
+// Handle messages from the client
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Firebase Messaging Logic

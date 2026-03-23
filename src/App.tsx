@@ -45,6 +45,7 @@ import { Sparkles, Zap, Shield, Globe, Cpu, History, Terminal, Settings, Activit
 import { toast } from 'sonner';
 
 import ErrorBoundary from './components/ErrorBoundary';
+import SplashScreen from './components/SplashScreen';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -802,29 +803,7 @@ export default function App() {
   };
 
   if (splashLoading || loading) {
-    return (
-      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-blue-600/5" />
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-500/10 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" />
-        
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-          className="z-10 text-center"
-        >
-          <div className="w-24 h-24 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-2xl flex items-center justify-center shadow-[0_0_40px_rgba(34,211,238,0.3)] mx-auto mb-8">
-            <span className="text-4xl font-black italic text-white">S+</span>
-          </div>
-          <h1 className="text-4xl font-black tracking-tighter mb-2 uppercase text-white">SYSTEM PLUS</h1>
-          <div className="flex items-center justify-center gap-2">
-            <div className="w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
-            <p className="text-xs text-zinc-500 font-bold uppercase tracking-[0.3em]">Initializing System</p>
-          </div>
-        </motion.div>
-      </div>
-    );
+    return <SplashScreen />;
   }
 
   if (!user) {
@@ -1135,7 +1114,15 @@ export default function App() {
           // Handle any side effects if needed
         }}
       />
-      <PWAInstallPrompt />
+      
+      <Suspense fallback={null}>
+        {deferredPrompt && (
+          <PWAInstallPrompt 
+            onInstall={handleInstallApp} 
+            onClose={() => setDeferredPrompt(null)} 
+          />
+        )}
+      </Suspense>
     </ErrorBoundary>
   );
 }

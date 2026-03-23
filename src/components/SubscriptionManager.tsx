@@ -384,21 +384,30 @@ export default function SubscriptionManager({ user }: SubscriptionManagerProps) 
                   </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl mb-8 flex flex-col items-center w-full max-w-[320px] mx-auto shadow-xl">
-                  {/* UPI QR Code Placeholder */}
-                  <div className="w-full aspect-square bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden relative border border-gray-100">
+                <div className="bg-white p-4 sm:p-8 rounded-[2.5rem] mb-8 flex flex-col items-center w-full max-w-[360px] mx-auto shadow-[0_20px_50px_rgba(0,0,0,0.3)] relative group">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-[2.6rem] blur opacity-20 group-hover:opacity-30 transition duration-1000 group-hover:duration-200" />
+                  
+                  {/* UPI QR Code Container */}
+                  <div className="relative w-full aspect-square bg-white rounded-3xl flex items-center justify-center overflow-hidden border-4 border-zinc-50 shadow-inner">
                     <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=upi://pay?pa=8389084579@slc%26pn=Simanto%20Mondal%26am=${selectedPlan === 'monthly' ? 25 : 250}%26cu=INR`}
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=upi://pay?pa=8389084579@slc%26pn=Simanto%20Mondal%26am=${selectedPlan === 'monthly' ? 25 : 250}%26cu=INR`}
                       alt="UPI QR Code"
-                      className="w-full h-full object-contain p-4"
+                      className="w-full h-full object-contain p-2 sm:p-6"
                     />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/[0.02] pointer-events-none">
-                      <Smartphone className="w-12 h-12 text-black/[0.05]" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/[0.01] pointer-events-none">
+                      <Smartphone className="w-16 h-16 text-black/[0.03]" />
                     </div>
                   </div>
-                  <div className="mt-6 text-center">
-                    <p className="text-black font-black text-3xl mb-1">₹{selectedPlan === 'monthly' ? 25 : 250}</p>
-                    <p className="text-black/60 text-sm font-mono bg-black/5 px-4 py-1.5 rounded-full border border-black/5">8389084579@slc</p>
+                  
+                  <div className="mt-8 text-center w-full">
+                    <div className="flex items-center justify-center gap-2 mb-2">
+                      <span className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.2em]">Amount Due</span>
+                      <div className="h-px flex-1 bg-zinc-100" />
+                    </div>
+                    <p className="text-black font-black text-4xl sm:text-5xl mb-2 tracking-tighter">₹{selectedPlan === 'monthly' ? 25 : 250}</p>
+                    <div className="inline-flex items-center gap-2 bg-zinc-100 px-4 py-2 rounded-2xl border border-zinc-200">
+                      <p className="text-zinc-600 text-xs font-mono font-bold">8389084579@slc</p>
+                    </div>
                   </div>
                 </div>
 

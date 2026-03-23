@@ -756,8 +756,10 @@ export const generateAutonomousTask = async (opportunity: any, context: { histor
     });
 
     return safeJsonParse(response.text, {});
-  } catch (error) {
-    SystemHealthService.logError('Task Generation', error instanceof Error ? error.message : String(error));
+  } catch (error: any) {
+    if (error.message !== 'AI_COOLDOWN_ACTIVE') {
+      SystemHealthService.logError('Task Generation', error instanceof Error ? error.message : String(error));
+    }
     return null;
   }
 };
@@ -788,8 +790,10 @@ export const collaborativeBrainRefinement = async (workspaceId: string, currentP
     });
 
     return safeJsonParse(response.text, {});
-  } catch (error) {
-    SystemHealthService.logError('Collaborative Refinement', error instanceof Error ? error.message : String(error));
+  } catch (error: any) {
+    if (error.message !== 'AI_COOLDOWN_ACTIVE') {
+      SystemHealthService.logError('Collaborative Refinement', error instanceof Error ? error.message : String(error));
+    }
     return {};
   }
 };
@@ -831,8 +835,10 @@ export const selfHeal = async (taskId: string, error: string, currentStep: any) 
     });
 
     return safeJsonParse(response.text, { analysis: "Failed to analyze", recoveryStep: null, isCritical: true });
-  } catch (error) {
-    SystemHealthService.logError('Self-Heal AI', error instanceof Error ? error.message : String(error));
+  } catch (error: any) {
+    if (error.message !== 'AI_COOLDOWN_ACTIVE') {
+      SystemHealthService.logError('Self-Heal AI', error instanceof Error ? error.message : String(error));
+    }
     return { analysis: "AI Analysis failed", recoveryStep: null, isCritical: true };
   }
 };
