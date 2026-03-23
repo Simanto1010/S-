@@ -7,9 +7,14 @@
 }
 
 @layer base {
+  * {
+    box-sizing: border-box;
+  }
   body {
     @apply bg-[#050505] text-white antialiased overflow-x-hidden;
     -webkit-tap-highlight-color: transparent;
+    width: 100%;
+    position: relative;
   }
 
   input, button, textarea, select {

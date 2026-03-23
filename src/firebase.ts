@@ -2,7 +2,7 @@ import { initializeApp, FirebaseApp } from 'firebase/app';
 import { 
   getAuth, GoogleAuthProvider, signInWithPopup, signOut, 
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  onAuthStateChanged, updateProfile, Auth
+  onAuthStateChanged, updateProfile, Auth, sendEmailVerification
 } from 'firebase/auth';
 import { 
   initializeFirestore, doc, getDoc, setDoc, collection, query, where, 
@@ -69,7 +69,8 @@ export const isAuthConfigured = missingFields.length === 0;
 export { 
   doc, getDoc, setDoc, collection, query, where, onSnapshot, serverTimestamp, 
   signInWithPopup, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  onAuthStateChanged, updateProfile, updateDoc, deleteDoc, addDoc, getDocs, orderBy, limit
+  onAuthStateChanged, updateProfile, updateDoc, deleteDoc, addDoc, getDocs, orderBy, limit,
+  sendEmailVerification
 };
 
 // Connection test

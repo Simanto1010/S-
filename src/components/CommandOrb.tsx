@@ -223,106 +223,110 @@ export default function CommandOrb({ onCommand, isProcessing }: CommandOrbProps)
         ))}
       </div>
 
-      <form 
-        onSubmit={handleSubmit}
-        className={`relative group transition-all duration-500 w-full max-w-2xl ${isListening ? 'scale-105' : ''}`}
-      >
-        {/* Glow Effect */}
-        <div className={`absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-3xl blur opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200 ${isListening ? 'opacity-60 animate-pulse' : ''}`} />
-        
-        <div className="relative bg-[#0a0a0a] border border-white/10 rounded-2xl flex items-center p-2 shadow-2xl">
-          <button
-            type="button"
-            onClick={toggleListening}
-            className={`p-4 rounded-xl transition-all relative ${isListening ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'}`}
+      <div className="fixed bottom-4 left-0 w-full z-50 pointer-events-none px-4">
+        <div className="max-w-2xl mx-auto pointer-events-auto">
+          <form 
+            onSubmit={handleSubmit}
+            className={`relative group transition-all duration-500 w-full ${isListening ? 'scale-105' : ''}`}
           >
-            {isListening ? (
-              <motion.div
-                animate={{ scale: [1, 1.2, 1] }}
-                transition={{ repeat: Infinity, duration: 1 }}
-              >
-                <Mic size={24} />
-              </motion.div>
-            ) : (
-              <Mic size={24} />
-            )}
-          </button>
-
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onFocus={() => setShowSuggestions(true)}
-            placeholder={isListening ? "Listening..." : "Enter command or use voice..."}
-            className="flex-1 bg-transparent border-none outline-none px-6 py-4 text-lg font-medium placeholder:text-zinc-600"
-          />
-
-          <div className="flex items-center gap-2 pr-2">
-            <AnimatePresence>
-              {input && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  type="button"
-                  onClick={() => setInput('')}
-                  className="p-2 text-zinc-500 hover:text-white transition-colors"
-                >
-                  <X size={20} />
-                </motion.button>
-              )}
-            </AnimatePresence>
+            {/* Glow Effect */}
+            <div className={`absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-3xl blur opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200 ${isListening ? 'opacity-60 animate-pulse' : ''}`} />
             
-            <button
-              type="submit"
-              disabled={!input.trim() || isProcessing}
-              className={`p-4 rounded-xl transition-all ${
-                input.trim() && !isProcessing 
-                  ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(34,211,238,0.4)]' 
-                  : 'bg-white/5 text-zinc-700'
-              }`}
-            >
-              {isProcessing ? <Loader2 size={24} className="animate-spin" /> : <Send size={24} />}
-            </button>
-          </div>
-        </div>
-
-        {/* Error Message */}
-        <AnimatePresence>
-          {micError && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="absolute -bottom-14 left-0 right-0 flex justify-center"
-            >
-              <div className="bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-2xl flex items-center gap-3 text-red-500 text-[10px] font-bold uppercase tracking-widest shadow-lg backdrop-blur-md">
-                <div className="flex items-center gap-2">
-                  <AlertCircle size={14} />
-                  {micError}
-                </div>
-                {(micError.includes('denied') || micError.includes('detected')) && (
-                  <button 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      requestMicPermission();
-                    }}
-                    className="px-2 py-1 bg-red-500 text-white rounded-lg hover:bg-red-400 transition-colors"
+            <div className="relative bg-[#0a0a0a]/90 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center p-1.5 sm:p-2 shadow-2xl">
+              <button
+                type="button"
+                onClick={toggleListening}
+                className={`p-3 sm:p-4 rounded-xl transition-all relative flex-shrink-0 ${isListening ? 'bg-cyan-500 text-black' : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'}`}
+              >
+                {isListening ? (
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ repeat: Infinity, duration: 1 }}
                   >
-                    {micError.includes('denied') ? 'Fix' : 'Retry'}
-                  </button>
+                    <Mic size={20} className="sm:w-6 sm:h-6" />
+                  </motion.div>
+                ) : (
+                  <Mic size={20} className="sm:w-6 sm:h-6" />
                 )}
-                <button 
-                  onClick={() => setMicError(null)}
-                  className="p-1 hover:bg-white/5 rounded"
+              </button>
+
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onFocus={() => setShowSuggestions(true)}
+                placeholder={isListening ? "Listening..." : "Enter command..."}
+                className="flex-1 bg-transparent border-none outline-none px-3 sm:px-6 py-3 sm:py-4 text-sm sm:text-lg font-medium placeholder:text-zinc-600 min-w-0"
+              />
+
+              <div className="flex items-center gap-1 sm:gap-2 pr-1 sm:pr-2 flex-shrink-0">
+                <AnimatePresence>
+                  {input && (
+                    <motion.button
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      type="button"
+                      onClick={() => setInput('')}
+                      className="p-1.5 sm:p-2 text-zinc-500 hover:text-white transition-colors"
+                    >
+                      <X size={18} className="sm:w-5 sm:h-5" />
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+                
+                <button
+                  type="submit"
+                  disabled={!input.trim() || isProcessing}
+                  className={`p-3 sm:p-4 rounded-xl transition-all ${
+                    input.trim() && !isProcessing 
+                      ? 'bg-cyan-500 text-black shadow-[0_0_20px_rgba(34,211,238,0.4)]' 
+                      : 'bg-white/5 text-zinc-700'
+                  }`}
                 >
-                  <X size={12} />
+                  {isProcessing ? <Loader2 size={20} className="sm:w-6 sm:h-6 animate-spin" /> : <Send size={20} className="sm:w-6 sm:h-6" />}
                 </button>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </form>
+            </div>
+
+            {/* Error Message */}
+            <AnimatePresence>
+              {micError && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="absolute -top-14 left-0 right-0 flex justify-center"
+                >
+                  <div className="bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-2xl flex items-center gap-3 text-red-500 text-[10px] font-bold uppercase tracking-widest shadow-lg backdrop-blur-md">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} />
+                      {micError}
+                    </div>
+                    {(micError.includes('denied') || micError.includes('detected')) && (
+                      <button 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          requestMicPermission();
+                        }}
+                        className="px-2 py-1 bg-red-500 text-white rounded-lg hover:bg-red-400 transition-colors"
+                      >
+                        {micError.includes('denied') ? 'Fix' : 'Retry'}
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => setMicError(null)}
+                      className="p-1 hover:bg-white/5 rounded"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </form>
+        </div>
+      </div>
 
       {/* Suggestions Overlay */}
       <AnimatePresence>

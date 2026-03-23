@@ -384,109 +384,111 @@ export default function SubscriptionManager({ user }: SubscriptionManagerProps) 
                   </div>
                 </div>
 
-                <div className="bg-white p-4 sm:p-8 rounded-[2.5rem] mb-8 flex flex-col items-center w-full max-w-[360px] mx-auto shadow-[0_20px_50px_rgba(0,0,0,0.3)] relative group">
-                  <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-[2.6rem] blur opacity-20 group-hover:opacity-30 transition duration-1000 group-hover:duration-200" />
-                  
-                  {/* UPI QR Code Container */}
-                  <div className="relative w-full aspect-square bg-white rounded-3xl flex items-center justify-center overflow-hidden border-4 border-zinc-50 shadow-inner">
-                    <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=upi://pay?pa=8389084579@slc%26pn=Simanto%20Mondal%26am=${selectedPlan === 'monthly' ? 25 : 250}%26cu=INR`}
-                      alt="UPI QR Code"
-                      className="w-full h-full object-contain p-2 sm:p-6"
-                    />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/[0.01] pointer-events-none">
-                      <Smartphone className="w-16 h-16 text-black/[0.03]" />
-                    </div>
-                  </div>
-                  
-                  <div className="mt-8 text-center w-full">
-                    <div className="flex items-center justify-center gap-2 mb-2">
-                      <span className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.2em]">Amount Due</span>
-                      <div className="h-px flex-1 bg-zinc-100" />
-                    </div>
-                    <p className="text-black font-black text-4xl sm:text-5xl mb-2 tracking-tighter">₹{selectedPlan === 'monthly' ? 25 : 250}</p>
-                    <div className="inline-flex items-center gap-2 bg-zinc-100 px-4 py-2 rounded-2xl border border-zinc-200">
-                      <p className="text-zinc-600 text-xs font-mono font-bold">8389084579@slc</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="p-4 bg-cyan-500/5 border border-cyan-500/20 rounded-xl">
-                    <div className="flex gap-3">
-                      <Info className="w-5 h-5 text-cyan-400 flex-shrink-0" />
-                      <p className="text-xs text-white/70 leading-relaxed">
-                        Scan and pay using any UPI app (PhonePe, Paytm, GPay). 
-                        After payment, enter the 12-digit Transaction ID below.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-widest text-white/40">Transaction ID (UTR)</label>
-                    <input
-                      type="text"
-                      value={transactionId}
-                      onChange={(e) => setTransactionId(e.target.value)}
-                      placeholder="Enter 12-digit ID"
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-500 transition-colors font-mono"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-widest text-white/40">Payment Screenshot</label>
-                    <div className="relative">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleFileChange}
-                        className="hidden"
-                        id="screenshot-upload"
+                <div className="max-h-[70vh] overflow-y-auto custom-scrollbar px-8 pb-8">
+                  <div className="bg-white p-4 sm:p-8 rounded-[2.5rem] mb-8 flex flex-col items-center w-full max-w-[320px] mx-auto shadow-[0_20px_50px_rgba(0,0,0,0.3)] relative group">
+                    <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-[2.6rem] blur opacity-20 group-hover:opacity-30 transition duration-1000 group-hover:duration-200" />
+                    
+                    {/* UPI QR Code Container */}
+                    <div className="relative w-full aspect-square bg-white rounded-3xl flex items-center justify-center overflow-hidden border-4 border-zinc-50 shadow-inner">
+                      <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=upi://pay?pa=8389084579@slc%26pn=Simanto%20Mondal%26am=${selectedPlan === 'monthly' ? 25 : 250}%26cu=INR`}
+                        alt="UPI QR Code"
+                        className="w-full h-full object-contain p-2 sm:p-4"
                       />
-                      <label
-                        htmlFor="screenshot-upload"
-                        className="flex items-center justify-center gap-2 w-full bg-white/5 border border-dashed border-white/20 rounded-xl px-4 py-3 text-sm cursor-pointer hover:bg-white/10 transition-all"
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/[0.01] pointer-events-none">
+                        <Smartphone className="w-12 h-12 text-black/[0.03]" />
+                      </div>
+                    </div>
+                    
+                    <div className="mt-6 text-center w-full">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <span className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.2em]">Amount Due</span>
+                        <div className="h-px flex-1 bg-zinc-100" />
+                      </div>
+                      <p className="text-black font-black text-3xl sm:text-4xl mb-2 tracking-tighter">₹{selectedPlan === 'monthly' ? 25 : 250}</p>
+                      <div className="inline-flex items-center gap-2 bg-zinc-100 px-3 py-2 rounded-xl border border-zinc-200 max-w-full overflow-hidden">
+                        <p className="text-zinc-600 text-[10px] font-mono font-bold break-all">8389084579@slc</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="p-4 bg-cyan-500/5 border border-cyan-500/20 rounded-xl">
+                      <div className="flex gap-3">
+                        <Info className="w-5 h-5 text-cyan-400 flex-shrink-0" />
+                        <p className="text-xs text-white/70 leading-relaxed">
+                          Scan and pay using any UPI app (PhonePe, Paytm, GPay). 
+                          After payment, enter the 12-digit Transaction ID below.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-widest text-white/40">Transaction ID (UTR)</label>
+                      <input
+                        type="text"
+                        value={transactionId}
+                        onChange={(e) => setTransactionId(e.target.value)}
+                        placeholder="Enter 12-digit ID"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-cyan-500 transition-colors font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold uppercase tracking-widest text-white/40">Payment Screenshot</label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileChange}
+                          className="hidden"
+                          id="screenshot-upload"
+                        />
+                        <label
+                          htmlFor="screenshot-upload"
+                          className="flex items-center justify-center gap-2 w-full bg-white/5 border border-dashed border-white/20 rounded-xl px-4 py-3 text-sm cursor-pointer hover:bg-white/10 transition-all"
+                        >
+                          {screenshot ? (
+                            <div className="flex items-center gap-2 text-cyan-400">
+                              <Check className="w-4 h-4" />
+                              <span>Screenshot Selected</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-white/60">
+                              <Download className="w-4 h-4" />
+                              <span>Upload Screenshot</span>
+                            </div>
+                          )}
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 sticky bottom-0 bg-[#0a0a0a] pt-4 pb-2">
+                      <button
+                        onClick={() => {
+                          setIsPaymentModalOpen(false);
+                          setScreenshot(null);
+                          setTransactionId('');
+                        }}
+                        className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 font-bold transition-all"
                       >
-                        {screenshot ? (
-                          <div className="flex items-center gap-2 text-cyan-400">
-                            <Check className="w-4 h-4" />
-                            <span>Screenshot Selected</span>
+                        Cancel
+                      </button>
+                      <button
+                        disabled={isSubmitting || !transactionId || !screenshot}
+                        onClick={handlePaymentSubmit}
+                        className="flex-[2] py-3 rounded-xl bg-cyan-500 text-black hover:bg-cyan-400 font-bold transition-all shadow-[0_0_20px_rgba(34,211,238,0.3)] disabled:opacity-50 relative overflow-hidden"
+                      >
+                        {isSubmitting ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>AI Verifying...</span>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 text-white/60">
-                            <Download className="w-4 h-4" />
-                            <span>Upload Screenshot</span>
-                          </div>
+                          'I HAVE PAID'
                         )}
-                      </label>
+                      </button>
                     </div>
-                  </div>
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => {
-                        setIsPaymentModalOpen(false);
-                        setScreenshot(null);
-                        setTransactionId('');
-                      }}
-                      className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 font-bold transition-all"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      disabled={isSubmitting || !transactionId || !screenshot}
-                      onClick={handlePaymentSubmit}
-                      className="flex-[2] py-3 rounded-xl bg-cyan-500 text-black hover:bg-cyan-400 font-bold transition-all shadow-[0_0_20px_rgba(34,211,238,0.3)] disabled:opacity-50 relative overflow-hidden"
-                    >
-                      {isSubmitting ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          <span>AI Verifying...</span>
-                        </div>
-                      ) : (
-                        'I HAVE PAID'
-                      )}
-                    </button>
                   </div>
                 </div>
               </div>

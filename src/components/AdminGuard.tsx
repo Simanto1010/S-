@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Lock, Key, ArrowRight, Loader2, LogOut } from 'lucide-react';
+import { auth } from '../firebase';
 import { useAdminAuth } from '../hooks/useAdminAuth';
 
 interface AdminGuardProps {
@@ -8,7 +9,10 @@ interface AdminGuardProps {
 }
 
 export default function AdminGuard({ children }: AdminGuardProps) {
-  const { isVerified, isOtpSent, isLoading, sendOtp, verifyOtp, isAdminEmail } = useAdminAuth();
+  const { 
+    isVerified, isOtpSent, isLoading, sendOtp, 
+    verifyOtp, isAdminEmail, maskedEmail, resendCooldown 
+  } = useAdminAuth();
   const [otp, setOtp] = useState('');
 
   if (!isAdminEmail) {
@@ -19,7 +23,7 @@ export default function AdminGuard({ children }: AdminGuardProps) {
         </div>
         <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
         <p className="text-zinc-500 text-center max-w-md">
-          This area is restricted to authorized administrators only. Your account does not have the necessary permissions.
+          This area is restricted to authorized administrators only. Your account ({auth.currentUser?.email}) does not have the necessary permissions.
         </p>
       </div>
     );
@@ -46,9 +50,9 @@ export default function AdminGuard({ children }: AdminGuardProps) {
             <div className="w-16 h-16 bg-cyan-500/10 rounded-2xl flex items-center justify-center text-cyan-400 mx-auto mb-6">
               <Lock size={32} />
             </div>
-            <h2 className="text-2xl font-bold mb-2">Admin Verification Required</h2>
+            <h2 className="text-2xl font-bold mb-2">Secure Admin Login Required</h2>
             <p className="text-zinc-500 mb-8">
-              A secure one-time password (OTP) is required to access the administrative dashboard.
+              A 6-digit verification code will be sent to <span className="text-cyan-400 font-mono">{maskedEmail}</span> to grant access.
             </p>
             <button
               onClick={sendOtp}
@@ -76,9 +80,9 @@ export default function AdminGuard({ children }: AdminGuardProps) {
             <div className="w-16 h-16 bg-cyan-500/10 rounded-2xl flex items-center justify-center text-cyan-400 mx-auto mb-6">
               <Key size={32} />
             </div>
-            <h2 className="text-2xl font-bold mb-2">Enter OTP</h2>
+            <h2 className="text-2xl font-bold mb-2">Enter 6-Digit Code</h2>
             <p className="text-zinc-500 mb-8">
-              Please enter the 6-digit code sent to your administrator email.
+              Please enter the code sent to <span className="text-cyan-400 font-mono">{maskedEmail}</span>.
             </p>
             
             <div className="space-y-4">
@@ -105,10 +109,10 @@ export default function AdminGuard({ children }: AdminGuardProps) {
               
               <button
                 onClick={sendOtp}
-                disabled={isLoading}
-                className="text-sm text-zinc-500 hover:text-cyan-400 transition-colors"
+                disabled={isLoading || resendCooldown > 0}
+                className="text-sm text-zinc-500 hover:text-cyan-400 transition-colors disabled:opacity-50"
               >
-                Didn't receive a code? Resend
+                {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : "Didn't receive a code? Resend"}
               </button>
             </div>
           </motion.div>

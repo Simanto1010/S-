@@ -66,11 +66,12 @@ const safeJsonParse = (text: string | undefined, fallback: any = []) => {
   }
 };
 
-const callAIWithRetry = async (params: any, retries = 3, delay = 2000): Promise<any> => {
+const callAIWithRetry = async (params: any, retries = 3, delay = 2000, priority: 'high' | 'low' = 'high'): Promise<any> => {
   return ErrorRetryService.execute(
     async () => {
-      if (Date.now() < globalCooldownUntil) {
-        console.warn(`[AI Core] Global cooldown active. Skipping API call.`);
+      const now = Date.now();
+      if (now < globalCooldownUntil && priority === 'low') {
+        console.warn(`[AI Core] Global cooldown active. Skipping low-priority API call.`);
         throw new Error('AI_COOLDOWN_ACTIVE');
       }
 
@@ -81,9 +82,9 @@ const callAIWithRetry = async (params: any, retries = 3, delay = 2000): Promise<
         return response;
       } catch (error: any) {
         if (error?.status === 'RESOURCE_EXHAUSTED' || error?.code === 429 || error?.message?.includes('quota')) {
-          // Set a 5-minute global cooldown if quota is exhausted
-          console.error(`[AI Core] Quota exhausted. Entering 5-minute cooldown.`);
-          globalCooldownUntil = Date.now() + 300000;
+          // Set a 30-second global cooldown if quota is exhausted (was 5 minutes)
+          console.error(`[AI Core] Quota exhausted. Entering 30-second cooldown.`);
+          globalCooldownUntil = Date.now() + 30000;
           SmartRouter.setQuotaLow(true);
           throw error; // Let ErrorRetryService handle the retry or failure
         }
@@ -387,7 +388,7 @@ export const getSmartSuggestions = async (history: any[] = []) => {
   }
 
   // Check global cooldown
-  if (now < globalCooldownUntil) {
+  if (now < globalCooldownUntil || SmartRouter.getQuotaStatus()) {
     return smartSuggestionsCache?.data || [];
   }
 
@@ -410,7 +411,7 @@ export const getSmartSuggestions = async (history: any[] = []) => {
           items: { type: Type.STRING }
         }
       }
-    });
+    }, 2, 2000, 'low');
     
     const suggestions = safeJsonParse(response.text, []);
     if (suggestions.length > 0) {
@@ -472,7 +473,7 @@ export const getProactiveSuggestions = async (context: {
   }
 
   // Check global cooldown
-  if (now < globalCooldownUntil) {
+  if (now < globalCooldownUntil || SmartRouter.getQuotaStatus()) {
     return proactiveCache?.data || [];
   }
 
@@ -532,7 +533,7 @@ export const getProactiveSuggestions = async (context: {
           }
         }
       }
-    });
+    }, 2, 2000, 'low');
 
     const data = safeJsonParse(response.text, []);
     proactiveCache = { data, timestamp: Date.now() };
@@ -568,7 +569,7 @@ export const getDailyInsights = async (history: any[]) => {
   }
 
   // Check global cooldown
-  if (now < globalCooldownUntil) {
+  if (now < globalCooldownUntil || SmartRouter.getQuotaStatus()) {
     return dailyInsightsCache?.data || null;
   }
 
@@ -604,7 +605,7 @@ export const getDailyInsights = async (history: any[]) => {
           }
         }
       }
-    });
+    }, 2, 2000, 'low');
 
     const data = safeJsonParse(response.text, {});
     dailyInsightsCache = { data, timestamp: Date.now(), date: today };
@@ -644,7 +645,7 @@ export const detectAutonomousOpportunities = async (context: {
   }
 
   // Check global cooldown
-  if (now < globalCooldownUntil) {
+  if (now < globalCooldownUntil || SmartRouter.getQuotaStatus()) {
     return opportunityCache?.data || [];
   }
 
@@ -690,7 +691,7 @@ export const detectAutonomousOpportunities = async (context: {
           }
         }
       }
-    });
+    }, 2, 2000, 'low');
 
     const opportunities = safeJsonParse(response.text, []);
     opportunityCache = { data: opportunities, timestamp: Date.now() };
@@ -718,6 +719,9 @@ export const detectAutonomousOpportunities = async (context: {
  * SECTION 3 & 5 — AUTO TASK GENERATION
  */
 export const generateAutonomousTask = async (opportunity: any, context: { history: any[], connectors: string[], goals: any[] }) => {
+  if (Date.now() < globalCooldownUntil || SmartRouter.getQuotaStatus()) {
+    return null;
+  }
   try {
     const response = await callAIWithRetry({
       model: "gemini-3.1-pro-preview",
@@ -753,7 +757,7 @@ export const generateAutonomousTask = async (opportunity: any, context: { histor
           }
         }
       }
-    });
+    }, 2, 2000, 'low');
 
     return safeJsonParse(response.text, {});
   } catch (error: any) {
@@ -769,6 +773,9 @@ export const generateAutonomousTask = async (opportunity: any, context: { histor
  * Synthesizes inputs from multiple team members for strategy refinement.
  */
 export const collaborativeBrainRefinement = async (workspaceId: string, currentPlan: any, teamInputs: any[]) => {
+  if (Date.now() < globalCooldownUntil) {
+    return {};
+  }
   try {
     const response = await callAIWithRetry({
       model: "gemini-3.1-pro-preview",
@@ -854,6 +861,10 @@ class SmartRouter {
 
   static setQuotaLow(low: boolean) {
     this.isQuotaLow = low;
+  }
+
+  static getQuotaStatus() {
+    return this.isQuotaLow;
   }
 
   static async route(command: string): Promise<{ model: string, mode: 'full' | 'light' | 'local' }> {

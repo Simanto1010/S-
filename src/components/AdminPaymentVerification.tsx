@@ -4,7 +4,7 @@ import {
   CheckCircle, XCircle, Clock, Search, 
   Filter, User, CreditCard, Calendar,
   ExternalLink, ShieldAlert, RefreshCw,
-  Sparkles
+  Sparkles, LogOut
 } from 'lucide-react';
 import { db, auth, serverTimestamp } from '../firebase';
 import { 
@@ -15,8 +15,10 @@ import {
 import { toast } from 'sonner';
 import { PlanType, PLAN_LIMITS } from '../services/saasService';
 import { ActivityLogService } from '../services/activityLogService';
+import { useAdminAuth } from '../hooks/useAdminAuth';
 
 export default function AdminPaymentVerification() {
+  const { logout } = useAdminAuth();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
@@ -103,12 +105,22 @@ export default function AdminPaymentVerification() {
   return (
     <div className="space-y-8 max-w-6xl mx-auto p-4 lg:p-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <ShieldAlert className="w-6 h-6 text-amber-400" />
-            <h2 className="text-3xl font-bold tracking-tighter">Payment Verification</h2>
+        <div className="flex items-center justify-between w-full">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <ShieldAlert className="w-6 h-6 text-amber-400" />
+              <h2 className="text-3xl font-bold tracking-tighter">Admin Panel Access</h2>
+            </div>
+            <p className="text-white/60 text-sm">Secure administrative dashboard and verification center</p>
           </div>
-          <p className="text-white/60 text-sm">Review and approve manual UPI payment requests</p>
+          
+          <button
+            onClick={logout}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-red-500/10 text-zinc-400 hover:text-red-400 rounded-xl border border-white/10 transition-all text-sm font-bold"
+          >
+            <LogOut size={16} />
+            End Session
+          </button>
         </div>
 
         <div className="flex items-center gap-2 bg-white/5 p-1 rounded-xl border border-white/5">

@@ -50,7 +50,7 @@ export default function Layout({ children, activeTab, setActiveTab, user, onSett
   ];
 
   if (isAdmin) {
-    menuItems.push({ id: 'admin-payments', icon: ShieldAlert, label: 'Admin Payments' });
+    menuItems.push({ id: 'admin-payments', icon: ShieldAlert, label: 'Admin Panel Access' });
   }
 
   return (

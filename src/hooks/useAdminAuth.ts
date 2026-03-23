@@ -6,30 +6,28 @@ const ADMIN_EMAIL = 'mbidhan474@gmail.com';
 const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes
 
 export function useAdminAuth() {
-  const [isVerified, setIsVerified] = useState(false);
+  const [isVerified, setIsVerified] = useState(() => sessionStorage.getItem('admin_verified') === 'true');
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [lastActivity, setLastActivity] = useState(Date.now());
+  const [resendCooldown, setResendCooldown] = useState(0);
 
-  const checkAdminRole = useCallback(async (uid: string) => {
-    try {
-      const userDoc = await getDoc(doc(db, 'users', uid));
-      if (userDoc.exists() && userDoc.data().role === 'admin') {
-        return true;
-      }
-      return false;
-    } catch (error) {
-      console.error('Error checking admin role:', error);
-      return false;
+  const maskedEmail = ADMIN_EMAIL.replace(/(.{1}).*(@.*)/, "$1****$2");
+
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+      return () => clearTimeout(timer);
     }
-  }, []);
+  }, [resendCooldown]);
 
   const sendOtp = async () => {
     if (!auth.currentUser || auth.currentUser.email !== ADMIN_EMAIL) {
       toast.error('Access Denied');
-      await logAdminAction(auth.currentUser?.email || 'unknown', 'otp_request', 'denied', 'Unauthorized email attempt');
       return;
     }
+
+    if (resendCooldown > 0) return;
 
     setIsLoading(true);
     try {
@@ -41,7 +39,8 @@ export function useAdminAuth() {
       
       if (res.ok) {
         setIsOtpSent(true);
-        toast.success('OTP sent to your email');
+        setResendCooldown(30);
+        toast.success(`OTP sent to ${maskedEmail}`);
         await logAdminAction(ADMIN_EMAIL, 'otp_request', 'success');
       } else {
         const data = await res.json();
@@ -66,12 +65,13 @@ export function useAdminAuth() {
 
       if (res.ok) {
         setIsVerified(true);
+        sessionStorage.setItem('admin_verified', 'true');
         setLastActivity(Date.now());
         toast.success('Admin access granted');
         await logAdminAction(ADMIN_EMAIL, 'otp_verification', 'success');
       } else {
         const data = await res.json();
-        toast.error(data.error || 'Invalid OTP');
+        toast.error(data.error || 'Invalid or expired code');
         await logAdminAction(ADMIN_EMAIL, 'otp_verification', 'failed', data.error);
       }
     } catch (error) {
@@ -84,7 +84,8 @@ export function useAdminAuth() {
   const logout = useCallback(() => {
     setIsVerified(false);
     setIsOtpSent(false);
-    toast.info('Admin session expired');
+    sessionStorage.removeItem('admin_verified');
+    toast.info('Admin session ended');
   }, []);
 
   // Session timeout logic
@@ -115,6 +116,8 @@ export function useAdminAuth() {
     sendOtp,
     verifyOtp,
     logout,
+    maskedEmail,
+    resendCooldown,
     isAdminEmail: auth.currentUser?.email === ADMIN_EMAIL
   };
 }

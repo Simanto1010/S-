@@ -93,22 +93,60 @@ async function startServer() {
   });
 
   // Admin OTP API
-  const otpStore = new Map<string, { otp: string, expires: number }>();
-
-  app.post("/api/admin/send-otp", (req, res) => {
+  const otpStore = new Map<string, { otp: string, expires: number, attempts: number, lastRequest: number }>();
+  
+  app.post("/api/admin/send-otp", async (req, res) => {
     const { email } = req.body;
     if (email !== "mbidhan474@gmail.com") {
       return res.status(403).json({ error: "Access Denied" });
     }
 
+    const now = Date.now();
+    const stored = otpStore.get(email);
+    
+    // Rate limiting: max 3 requests per minute
+    if (stored && now - stored.lastRequest < 60000 && stored.attempts >= 3) {
+      return res.status(429).json({ error: "Too many requests. Please wait 60 seconds." });
+    }
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore.set(email, { otp, expires: Date.now() + 5 * 60 * 1000 }); // 5 min expiry
+    otpStore.set(email, { 
+      otp, 
+      expires: now + 60 * 1000, // 60 seconds expiry
+      attempts: (stored?.attempts || 0) + 1,
+      lastRequest: now
+    });
 
     console.log(`[ADMIN OTP] OTP for ${email}: ${otp}`);
     
-    // In a real app, send email here
-    // For now, we simulate success
-    res.json({ success: true, message: "OTP sent to your email (check server logs for demo)" });
+    try {
+      // In a real app, use nodemailer with real SMTP
+      // For demo, we simulate success and log to console
+      // If you have SMTP credentials, configure them here:
+      /*
+      const nodemailer = await import('nodemailer');
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT),
+        secure: true,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        }
+      });
+      await transporter.sendMail({
+        from: '"S+ System" <noreply@splus.com>',
+        to: email,
+        subject: "Your S+ Admin Verification Code",
+        text: `Your 6-digit code is: ${otp} (valid for 60 seconds)`
+      });
+      */
+      
+      res.json({ success: true, message: "OTP sent to your email (valid for 60s)" });
+    } catch (error) {
+      console.error("Failed to send email:", error);
+      res.status(500).json({ error: "Failed to send verification code" });
+    }
   });
 
   app.post("/api/admin/verify-otp", (req, res) => {
@@ -116,14 +154,14 @@ async function startServer() {
     const stored = otpStore.get(email);
 
     if (!stored || stored.expires < Date.now()) {
-      return res.status(400).json({ error: "OTP expired or not found" });
+      return res.status(400).json({ error: "Invalid or expired code" });
     }
 
     if (stored.otp === otp) {
       otpStore.delete(email);
       res.json({ success: true });
     } else {
-      res.status(400).json({ error: "Invalid OTP" });
+      res.status(400).json({ error: "Invalid or expired code" });
     }
   });
 

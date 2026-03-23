@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   auth, googleProvider, signInWithPopup, 
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  updateProfile
+  updateProfile, sendEmailVerification
 } from '../firebase';
 import { Globe, Mail, Lock, User, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -53,14 +53,22 @@ export default function Auth() {
       if (isLogin) {
         const result = await signInWithEmailAndPassword(auth, email, password);
         if (result.user) {
+          if (!result.user.emailVerified) {
+            setError('Please verify your email before logging in. Check your inbox.');
+            toast.error('Email not verified');
+            setIsLoading(false);
+            return;
+          }
           ActivityLogService.log(result.user.uid, 'User logged in via Email', 'success', 'auth');
         }
         toast.success('Access granted. Welcome back.');
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(userCredential.user, { displayName: name });
+        await sendEmailVerification(userCredential.user);
         ActivityLogService.log(userCredential.user.uid, 'New user registered', 'success', 'auth');
-        toast.success('Account created. System initialized.');
+        toast.success('Account created. Verification email sent.');
+        setIsLogin(true); // Switch to login to wait for verification
       }
     } catch (err: any) {
       console.error('Auth Error:', err);
