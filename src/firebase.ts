@@ -7,10 +7,15 @@ import {
 import { 
   initializeFirestore, doc, getDoc, setDoc, collection, query, where, 
   onSnapshot, serverTimestamp, getDocFromServer, updateDoc,
-  deleteDoc, addDoc, getDocs, orderBy, limit, Firestore
+  deleteDoc, addDoc, getDocs, orderBy, limit, Firestore,
+  setLogLevel
 } from 'firebase/firestore';
 import { toast } from 'sonner';
 import firebaseConfig from '../firebase-applet-config.json';
+
+// Suppress benign internal SDK logs (like idle stream timeouts)
+// Using 'silent' to ensure even cancelled stream warnings are hidden
+setLogLevel('silent');
 
 console.log('[Firebase] Initializing Core Services...');
 
