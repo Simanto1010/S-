@@ -1,14 +1,16 @@
-const CACHE_NAME = 'splus-kernel-v4.1';
+const CACHE_NAME = 'splus-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
   'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap',
   'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap'
 ];
 
 self.addEventListener('install', (event) => {
-  console.log('[PWA] Kernel Installing');
+  console.log('[PWA] Kernel Installing v2');
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
@@ -19,14 +21,14 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  console.log('[PWA] Kernel Activating');
+  console.log('[PWA] Kernel Activating v2');
   event.waitUntil(
     Promise.all([
       self.clients.claim(),
       caches.keys().then((cacheNames) => {
         return Promise.all(
           cacheNames.map((cacheName) => {
-            if (cacheName !== CACHE_NAME && cacheName.startsWith('splus-')) {
+            if (cacheName !== CACHE_NAME) {
               console.log('[PWA] Purging Legacy Cache:', cacheName);
               return caches.delete(cacheName);
             }
@@ -111,7 +113,7 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification.title;
   const notificationOptions = {
     body: payload.notification.body,
-    icon: 'https://picsum.photos/seed/splus/192/192'
+    icon: '/icons/icon-192.png'
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);

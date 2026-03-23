@@ -13,6 +13,9 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
  * Helper to call Gemini API with retry logic and exponential backoff
  */
 let globalCooldownUntil = 0;
+let consecutiveQuotaFailures = 0;
+const REQUEST_INTERVAL = 1500; // Minimum 1.5s between requests to avoid burst 429s
+let lastRequestTime = 0;
 
 export const isAiCooldownActive = () => Date.now() < globalCooldownUntil;
 export const getCooldownRemaining = () => Math.max(0, Math.ceil((globalCooldownUntil - Date.now()) / 1000));
@@ -70,23 +73,74 @@ const callAIWithRetry = async (params: any, retries = 3, delay = 2000, priority:
   return ErrorRetryService.execute(
     async () => {
       const now = Date.now();
-      if (now < globalCooldownUntil && priority === 'low') {
-        console.warn(`[AI Core] Global cooldown active. Skipping low-priority API call.`);
-        throw new Error('AI_COOLDOWN_ACTIVE');
+      
+      // 1. Check Global Cooldown
+      if (now < globalCooldownUntil) {
+        if (priority === 'low') {
+          console.warn(`[AI Core] Global cooldown active. Skipping low-priority API call.`);
+          throw new Error('AI_COOLDOWN_ACTIVE');
+        } else {
+          // For high priority, wait until cooldown ends if it's short, or fail
+          const waitTime = globalCooldownUntil - now;
+          if (waitTime < 5000) {
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          } else {
+            throw new Error(`AI_COOLDOWN_ACTIVE: ${Math.ceil(waitTime / 1000)}s remaining`);
+          }
+        }
       }
 
+      // 2. Rate Limiting (Burst Protection)
+      const timeSinceLastRequest = now - lastRequestTime;
+      if (timeSinceLastRequest < REQUEST_INTERVAL) {
+        await new Promise(resolve => setTimeout(resolve, REQUEST_INTERVAL - timeSinceLastRequest));
+      }
+      lastRequestTime = Date.now();
+
       try {
+        // 3. Fallback Logic: If quota is low and we're trying Pro, maybe use Flash Lite instead
+        if (SmartRouter.getQuotaStatus() && params.model === "gemini-3.1-pro-preview") {
+          console.info(`[AI Core] Quota low. Downgrading high-priority task to Flash Lite.`);
+          params.model = "gemini-3.1-flash-lite-preview";
+        }
+
         const response = await ai.models.generateContent(params);
-        // Reset quota flag on success
+        
+        // Reset quota flag and failure count on success
         SmartRouter.setQuotaLow(false);
+        consecutiveQuotaFailures = 0;
         return response;
       } catch (error: any) {
-        if (error?.status === 'RESOURCE_EXHAUSTED' || error?.code === 429 || error?.message?.includes('quota')) {
-          // Set a 30-second global cooldown if quota is exhausted (was 5 minutes)
-          console.error(`[AI Core] Quota exhausted. Entering 30-second cooldown.`);
-          globalCooldownUntil = Date.now() + 30000;
+        const isQuotaError = error?.status === 'RESOURCE_EXHAUSTED' || 
+                           error?.code === 429 || 
+                           error?.message?.includes('quota') ||
+                           error?.message?.includes('429');
+
+        if (isQuotaError) {
+          consecutiveQuotaFailures++;
+          
+          // Adaptive Cooldown: 30s, 60s, 120s...
+          const cooldownDuration = 30000 * Math.pow(2, Math.min(consecutiveQuotaFailures - 1, 3));
+          console.error(`[AI Core] Quota exhausted (${consecutiveQuotaFailures}x). Entering ${cooldownDuration / 1000}s cooldown.`);
+          
+          globalCooldownUntil = Date.now() + cooldownDuration;
           SmartRouter.setQuotaLow(true);
-          throw error; // Let ErrorRetryService handle the retry or failure
+
+          // If Pro failed, try Flash Lite immediately as a last resort before throwing
+          if (params.model === "gemini-3.1-pro-preview") {
+            console.info(`[AI Core] Attempting emergency fallback to Flash Lite...`);
+            try {
+              const fallbackResponse = await ai.models.generateContent({
+                ...params,
+                model: "gemini-3.1-flash-lite-preview"
+              });
+              return fallbackResponse;
+            } catch (fallbackError) {
+              console.error(`[AI Core] Fallback also failed.`);
+            }
+          }
+          
+          throw error;
         }
         throw error;
       }
@@ -881,6 +935,11 @@ class SmartRouter {
     }
 
     // High complexity or creative tasks -> full model
+    // BUT if quota is low, we MUST use flash-lite even for complex tasks to avoid 429
+    if (this.isQuotaLow) {
+      return { model: "gemini-3.1-flash-lite-preview", mode: 'light' };
+    }
+
     return { model: "gemini-3.1-pro-preview", mode: 'full' };
   }
 

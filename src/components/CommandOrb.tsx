@@ -223,16 +223,17 @@ export default function CommandOrb({ onCommand, isProcessing }: CommandOrbProps)
         ))}
       </div>
 
-      <div className="fixed bottom-4 left-0 w-full z-50 pointer-events-none px-4">
-        <div className="max-w-2xl mx-auto pointer-events-auto">
+      {/* Command Input Bar */}
+      <div className="w-full flex justify-center mt-4 mb-4 relative z-50">
+        <div className="w-full max-w-[600px] px-3 sm:px-0 box-border overflow-hidden">
           <form 
             onSubmit={handleSubmit}
-            className={`relative group transition-all duration-500 w-full ${isListening ? 'scale-105' : ''}`}
+            className={`relative group transition-all duration-500 w-full flex items-center gap-2 ${isListening ? 'scale-[1.02]' : ''}`}
           >
             {/* Glow Effect */}
             <div className={`absolute -inset-1 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-3xl blur opacity-20 group-hover:opacity-40 transition duration-1000 group-hover:duration-200 ${isListening ? 'opacity-60 animate-pulse' : ''}`} />
             
-            <div className="relative bg-[#0a0a0a]/90 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center p-1.5 sm:p-2 shadow-2xl">
+            <div className="relative flex-1 bg-[#0a0a0a]/90 backdrop-blur-xl border border-white/10 rounded-2xl flex items-center p-1.5 sm:p-2 shadow-2xl overflow-hidden">
               <button
                 type="button"
                 onClick={toggleListening}
@@ -335,7 +336,7 @@ export default function CommandOrb({ onCommand, isProcessing }: CommandOrbProps)
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="absolute top-full left-0 right-0 mt-4 p-6 bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/5 rounded-3xl shadow-2xl z-50"
+            className="w-full max-w-[600px] mt-4 p-6 bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/5 rounded-3xl shadow-2xl z-50"
           >
             <div className="flex items-center gap-3 mb-6">
               <Sparkles size={18} className="text-cyan-400" />

@@ -31,7 +31,7 @@ const VoiceOS = lazy(() => import('./components/VoiceOS').then(m => ({ default: 
 const PWAInstallPrompt = lazy(() => import('./components/PWAInstallPrompt'));
 const PredictiveDashboard = lazy(() => import('./components/PredictiveDashboard').then(m => ({ default: m.PredictiveDashboard })));
 const TeamHub = lazy(() => import('./components/TeamHub').then(m => ({ default: m.TeamHub })));
-import { orchestrateTask, getSmartSuggestions, getProactiveSuggestions, getDailyInsights, detectAutonomousOpportunities, generateAutonomousTask } from './services/aiService';
+import { orchestrateTask, getSmartSuggestions, getProactiveSuggestions, getDailyInsights, detectAutonomousOpportunities, generateAutonomousTask, isAiCooldownActive } from './services/aiService';
 import { ExecutionService } from './services/executionService';
 import { TemplateService } from './services/templateService';
 import { TeamService } from './services/teamService';
@@ -211,12 +211,13 @@ export default function App() {
       NotificationService.listenForMessages();
       
       const fetchSuggestions = async () => {
+        if (isAiCooldownActive()) return;
         const sugs = await getSmartSuggestions(commandHistory);
         setSuggestions(sugs);
       };
 
       // Debounce suggestions fetch to avoid quota limits
-      const timeout = setTimeout(fetchSuggestions, 5000);
+      const timeout = setTimeout(fetchSuggestions, 15000); // Increased to 15s
       return () => clearTimeout(timeout);
     }
   }, [commandHistory.length, user]);
@@ -339,6 +340,7 @@ export default function App() {
   useEffect(() => {
     if (user && commandHistory.length >= 0) {
       const fetchProactive = async () => {
+        if (isAiCooldownActive()) return;
         const connectorsSnap = await getDocs(query(collection(db, 'userConnectors'), where('userId', '==', user.uid), where('status', '==', 'connected')))
           .catch(err => handleFirestoreError(err, OperationType.GET, 'userConnectors'));
         
@@ -360,7 +362,7 @@ export default function App() {
         setDailyInsights(insights);
       };
       
-      const timeout = setTimeout(fetchProactive, 30000); // Increase debounce to 30 seconds
+      const timeout = setTimeout(fetchProactive, 60000); // Increased to 60s
       return () => clearTimeout(timeout);
     }
   }, [user, commandHistory.length, goals.length]);
@@ -602,7 +604,18 @@ export default function App() {
   const handleCommand = async (command: string) => {
     if (!user) return;
 
-    // 1. Check Usage Limits
+    // 1. Check AI Cooldown
+    const { isAiCooldownActive, getCooldownRemaining } = await import('./services/aiService');
+    if (isAiCooldownActive()) {
+      const remaining = getCooldownRemaining();
+      toast.error("System Cooling Down", {
+        description: `AI Core is recovering from quota limits. Please wait ${remaining}s.`,
+        duration: 5000
+      });
+      return;
+    }
+
+    // 2. Check Usage Limits
     const canRunAI = await SaaSService.checkLimit(user.uid, 'aiCalls');
     if (!canRunAI) {
       toast.error("AI Limit Reached", {
@@ -1103,18 +1116,6 @@ export default function App() {
       </Suspense>
       </Layout>
 
-      {/* S+ Voice OS Interface */}
-      <VoiceOS 
-        context={{ 
-          history: commandHistory, 
-          connectors: [], // Should be populated from connectors state
-          goals: goals.map(g => g.title)
-        }} 
-        onCommandExecuted={(result) => {
-          // Handle any side effects if needed
-        }}
-      />
-      
       <Suspense fallback={null}>
         {deferredPrompt && (
           <PWAInstallPrompt 

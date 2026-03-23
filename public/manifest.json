@@ -4,32 +4,18 @@
   "description": "The world's first autonomous AI connector platform. S+ Kernel v4.0",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#050505",
-  "theme_color": "#050505",
+  "background_color": "#0B0F1A",
+  "theme_color": "#0B0F1A",
   "icons": [
     {
-      "src": "/icons/splus-192.png",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
-      "src": "/icons/splus-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "/icons/splus-512.png",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icons/splus-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "type": "image/png"
     }
   ],
   "orientation": "portrait",
@@ -39,12 +25,12 @@
     {
       "name": "Dashboard",
       "url": "/",
-      "icons": [{ "src": "https://picsum.photos/seed/splus/192/192", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Autonomous Center",
       "url": "/?tab=autonomous",
-      "icons": [{ "src": "https://picsum.photos/seed/splus/192/192", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
