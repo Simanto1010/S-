@@ -1,9 +1,7 @@
 import { db, auth } from "../firebase";
 import { doc, getDoc, setDoc, updateDoc, increment, serverTimestamp, collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
-import { GoogleGenAI } from "@google/genai";
+import { callAIWithRetry } from "./aiService";
 import { ActivityLogService } from "./activityLogService";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 export enum PlanType {
   FREE = 'free',
@@ -78,7 +76,7 @@ export class SaaSService {
     Return ONLY JSON.`;
 
     try {
-      const response = await ai.models.generateContent({
+      const response = await callAIWithRetry({
         model: "gemini-3-flash-preview",
         contents: [
           { text: prompt },

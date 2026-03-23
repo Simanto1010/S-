@@ -3,9 +3,7 @@ import { SystemHealthService } from "./systemHealthService";
 import { NotificationService } from "./notificationService";
 import { VaultService } from "./vaultService";
 import { ConnectorService } from "./connectorService";
-import { GoogleGenAI } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+import { callAIWithRetry } from "./aiService";
 
 export enum ExecutionType {
   API = 'api',
@@ -162,7 +160,7 @@ export class ExecutionService {
 
   private static async verifyExecution(task: ExecutionTask, result: any): Promise<boolean> {
     try {
-      const response = await ai.models.generateContent({
+      const response = await callAIWithRetry({
         model: "gemini-3.1-flash-lite-preview",
         contents: `Verify if the following execution result matches the expected output.
         Action: ${task.action}
@@ -217,7 +215,7 @@ export class ExecutionService {
     
     // AI-driven self-healing analysis
     try {
-      const response = await ai.models.generateContent({
+      const response = await callAIWithRetry({
         model: "gemini-3.1-flash-lite-preview",
         contents: `Analyze this execution failure and suggest a fix.
         Action: ${task.action}

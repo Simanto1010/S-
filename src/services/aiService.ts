@@ -14,8 +14,10 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
  */
 let globalCooldownUntil = 0;
 let consecutiveQuotaFailures = 0;
-const REQUEST_INTERVAL = 1500; // Minimum 1.5s between requests to avoid burst 429s
+const REQUEST_INTERVAL = 3000; // Increased to 3s to be safer
 let lastRequestTime = 0;
+let lastBackgroundRequestTime = 0;
+const BACKGROUND_REQUEST_THROTTLE = 30000; // Background tasks must be at least 30s apart globally
 
 export const isAiCooldownActive = () => Date.now() < globalCooldownUntil;
 export const getCooldownRemaining = () => Math.max(0, Math.ceil((globalCooldownUntil - Date.now()) / 1000));
@@ -69,15 +71,15 @@ const safeJsonParse = (text: string | undefined, fallback: any = []) => {
   }
 };
 
-const callAIWithRetry = async (params: any, retries = 3, delay = 2000, priority: 'high' | 'low' = 'high'): Promise<any> => {
+export const callAIWithRetry = async (params: any, retries = 3, delay = 2000, priority: 'high' | 'low' = 'high'): Promise<any> => {
   return ErrorRetryService.execute(
     async () => {
       const now = Date.now();
       
       // 1. Check Global Cooldown
       if (now < globalCooldownUntil) {
-        if (priority === 'low') {
-          console.warn(`[AI Core] Global cooldown active. Skipping low-priority API call.`);
+        if (priority === 'low' || consecutiveQuotaFailures > 0) {
+          console.warn(`[AI Core] Global cooldown active or quota strain detected. Skipping low-priority API call.`);
           throw new Error('AI_COOLDOWN_ACTIVE');
         } else {
           // For high priority, wait until cooldown ends if it's short, or fail
@@ -95,6 +97,17 @@ const callAIWithRetry = async (params: any, retries = 3, delay = 2000, priority:
       if (timeSinceLastRequest < REQUEST_INTERVAL) {
         await new Promise(resolve => setTimeout(resolve, REQUEST_INTERVAL - timeSinceLastRequest));
       }
+
+      // 2.1 Background Task Throttling (Extra layer for low priority)
+      if (priority === 'low') {
+        const timeSinceLastBackground = now - lastBackgroundRequestTime;
+        if (timeSinceLastBackground < BACKGROUND_REQUEST_THROTTLE) {
+          console.info(`[AI Core] Throttling background task (global background cooldown).`);
+          throw new Error('AI_BACKGROUND_THROTTLE');
+        }
+        lastBackgroundRequestTime = Date.now();
+      }
+      
       lastRequestTime = Date.now();
 
       try {
@@ -119,9 +132,9 @@ const callAIWithRetry = async (params: any, retries = 3, delay = 2000, priority:
         if (isQuotaError) {
           consecutiveQuotaFailures++;
           
-          // Adaptive Cooldown: 30s, 60s, 120s...
-          const cooldownDuration = 30000 * Math.pow(2, Math.min(consecutiveQuotaFailures - 1, 3));
-          console.error(`[AI Core] Quota exhausted (${consecutiveQuotaFailures}x). Entering ${cooldownDuration / 1000}s cooldown.`);
+          // Adaptive Cooldown: 60s, 120s, 240s...
+          const cooldownDuration = 60000 * Math.pow(2, Math.min(consecutiveQuotaFailures - 1, 3));
+          console.warn(`[AI Core] Quota exhausted (${consecutiveQuotaFailures}x). Entering ${cooldownDuration / 1000}s cooldown.`);
           
           globalCooldownUntil = Date.now() + cooldownDuration;
           SmartRouter.setQuotaLow(true);
@@ -397,28 +410,49 @@ export const generateImage = async (prompt: string, aspectRatio: "1:1" | "16:9" 
 };
 
 export const generateVideo = async (prompt: string, aspectRatio: "16:9" | "9:16" = "16:9") => {
-  try {
-    let operation = await ai.models.generateVideos({
-      model: 'veo-3.1-fast-generate-preview',
-      prompt: `A high-quality, professional video clip for: ${prompt}. Style: Cinematic, high-engagement.`,
-      config: {
-        numberOfVideos: 1,
-        resolution: '720p',
-        aspectRatio
-      }
-    });
-
-    // Poll for completion (simulated for this implementation, in real app would be async)
-    while (!operation.done) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      operation = await ai.operations.getVideosOperation({ operation: operation });
-    }
-
-    return operation.response?.generatedVideos?.[0]?.video?.uri;
-  } catch (error) {
-    SystemHealthService.logError('Video Generation', error instanceof Error ? error.message : String(error), { prompt });
-    return null;
+  if (isAiCooldownActive()) {
+    throw new Error('AI_COOLDOWN_ACTIVE');
   }
+
+  let retries = 2;
+  while (retries > 0) {
+    try {
+      let operation = await ai.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt: `A high-quality, professional video clip for: ${prompt}. Style: Cinematic, high-engagement.`,
+        config: {
+          numberOfVideos: 1,
+          resolution: '720p',
+          aspectRatio
+        }
+      });
+
+      // Poll for completion
+      while (!operation.done) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        operation = await ai.operations.getVideosOperation({ operation: operation });
+      }
+
+      return operation.response?.generatedVideos?.[0]?.video?.uri;
+    } catch (error: any) {
+      const isQuotaError = error?.status === 'RESOURCE_EXHAUSTED' || 
+                         error?.code === 429 || 
+                         error?.message?.includes('quota') ||
+                         error?.message?.includes('429');
+      
+      if (isQuotaError) {
+        console.error('[AI Core] Quota exhausted for video. Retrying...');
+        retries--;
+        if (retries > 0) {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+          continue;
+        }
+      }
+      SystemHealthService.logError('Video Generation', error instanceof Error ? error.message : String(error), { prompt });
+      return null;
+    }
+  }
+  return null;
 };
 
 // 6. Memory System - Learning from history
@@ -473,9 +507,9 @@ export const getSmartSuggestions = async (history: any[] = []) => {
     }
     return suggestions;
   } catch (error: any) {
-    // Don't log quota errors as system errors if we have a cache
-    if (error?.status === 'RESOURCE_EXHAUSTED' || error?.code === 429) {
-      console.warn("[AI Core] Quota exhausted for suggestions, using cache.");
+    // Don't log quota or throttle errors as system errors if we have a cache
+    if (error?.status === 'RESOURCE_EXHAUSTED' || error?.code === 429 || error.message === 'AI_BACKGROUND_THROTTLE') {
+      console.warn("[AI Core] Quota or throttle for suggestions, using cache.");
       return smartSuggestionsCache?.data || [];
     }
     
@@ -593,7 +627,7 @@ export const getProactiveSuggestions = async (context: {
     proactiveCache = { data, timestamp: Date.now() };
     return data;
   } catch (error: any) {
-    if (error.message !== 'AI_COOLDOWN_ACTIVE') {
+    if (error.message !== 'AI_COOLDOWN_ACTIVE' && error.message !== 'AI_BACKGROUND_THROTTLE') {
       SystemHealthService.logError('Proactive Suggestions', error instanceof Error ? error.message : String(error));
     }
     return proactiveCache?.data || [];
@@ -665,7 +699,7 @@ export const getDailyInsights = async (history: any[]) => {
     dailyInsightsCache = { data, timestamp: Date.now(), date: today };
     return data;
   } catch (error: any) {
-    if (error.message !== 'AI_COOLDOWN_ACTIVE') {
+    if (error.message !== 'AI_COOLDOWN_ACTIVE' && error.message !== 'AI_BACKGROUND_THROTTLE') {
       SystemHealthService.logError('Daily Insights', error instanceof Error ? error.message : String(error));
     }
     return dailyInsightsCache?.data || null;
@@ -762,7 +796,7 @@ export const detectAutonomousOpportunities = async (context: {
 
     return opportunities;
   } catch (error: any) {
-    if (error.message !== 'AI_COOLDOWN_ACTIVE') {
+    if (error.message !== 'AI_COOLDOWN_ACTIVE' && error.message !== 'AI_BACKGROUND_THROTTLE') {
       SystemHealthService.logError('Opportunity Detection', error instanceof Error ? error.message : String(error));
     }
     return opportunityCache?.data || [];

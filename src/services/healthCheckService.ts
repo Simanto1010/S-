@@ -1,6 +1,6 @@
 import { db, auth } from '../firebase';
 import { collection, getDocs, limit, query } from 'firebase/firestore';
-import { GoogleGenAI } from '@google/genai';
+import { callAIWithRetry } from './aiService';
 
 export interface HealthStatus {
   service: string;
@@ -13,11 +13,10 @@ export class HealthCheckService {
   static async checkAI(): Promise<HealthStatus> {
     const start = Date.now();
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-      await ai.models.generateContent({
+      await callAIWithRetry({
         model: 'gemini-3.1-flash-lite-preview',
         contents: 'ping',
-      });
+      }, 1, 1000, 'low');
       return {
         service: 'AI Engine',
         status: 'healthy',
@@ -26,7 +25,7 @@ export class HealthCheckService {
     } catch (err: any) {
       return {
         service: 'AI Engine',
-        status: err.message?.includes('quota') ? 'degraded' : 'down',
+        status: err.message?.includes('quota') || err.message?.includes('COOLDOWN') ? 'degraded' : 'down',
         message: err.message
       };
     }

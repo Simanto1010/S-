@@ -217,7 +217,7 @@ export default function App() {
       };
 
       // Debounce suggestions fetch to avoid quota limits
-      const timeout = setTimeout(fetchSuggestions, 15000); // Increased to 15s
+      const timeout = setTimeout(fetchSuggestions, 30000); // Increased to 30s
       return () => clearTimeout(timeout);
     }
   }, [commandHistory.length, user]);
@@ -362,7 +362,7 @@ export default function App() {
         setDailyInsights(insights);
       };
       
-      const timeout = setTimeout(fetchProactive, 60000); // Increased to 60s
+      const timeout = setTimeout(fetchProactive, 120000); // Increased to 120s
       return () => clearTimeout(timeout);
     }
   }, [user, commandHistory.length, goals.length]);
@@ -457,6 +457,7 @@ export default function App() {
   useEffect(() => {
     if (user && isAutonomousModeEnabled) {
       const autonomousLoop = async () => {
+        if (isAiCooldownActive()) return;
         try {
           // 1. Detect Opportunities
           const connectorsSnap = await getDocs(query(collection(db, 'userConnectors'), where('userId', '==', user.uid), where('status', '==', 'connected')))
@@ -515,11 +516,11 @@ export default function App() {
         }
       };
 
-      const interval = setInterval(autonomousLoop, 60000 * 5); // Every 5 minutes
+      const interval = setInterval(autonomousLoop, 60000 * 10); // Increased to 10 minutes
       autonomousLoop(); // Run once on enable
       return () => clearInterval(interval);
     }
-  }, [user, isAutonomousModeEnabled, commandHistory.length, goals.length]);
+  }, [user, isAutonomousModeEnabled]); // Removed commandHistory.length and goals.length
 
   const handleApproveTask = async (taskOrId: any) => {
     const task = typeof taskOrId === 'string' 

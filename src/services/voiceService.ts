@@ -1,7 +1,6 @@
-import { GoogleGenAI, Modality } from "@google/genai";
+import { Modality } from "@google/genai";
 import { toast } from "sonner";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+import { callAIWithRetry } from "./aiService";
 
 export class VoiceService {
   private static recognition: any = null;
@@ -110,7 +109,7 @@ export class VoiceService {
    */
   static async speak(text: string): Promise<void> {
     try {
-      const response = await ai.models.generateContent({
+      const response = await callAIWithRetry({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: `Say naturally and professionally: ${text}` }] }],
         config: {

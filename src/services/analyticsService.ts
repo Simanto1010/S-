@@ -1,8 +1,7 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { db, auth, handleFirestoreError, OperationType } from "../firebase";
 import { collection, query, where, getDocs, addDoc, serverTimestamp, orderBy, limit } from "firebase/firestore";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+import { callAIWithRetry } from "./aiService";
+import { Type } from "@google/genai";
 
 export class AnalyticsService {
   /**
@@ -33,7 +32,7 @@ export class AnalyticsService {
       }
 
       // 2. Use Gemini AI Core to Analyze and Predict
-      const response = await ai.models.generateContent({
+      const response = await callAIWithRetry({
         model: "gemini-3.1-pro-preview",
         contents: `You are the S+ Predictive Analytics Engine.
         Analyze the following historical performance data for a business workspace.

@@ -3,6 +3,7 @@ import {
   handleFirestoreError, OperationType 
 } from '../firebase';
 import { GoogleGenAI } from "@google/genai";
+import { isAiCooldownActive } from './aiService';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
@@ -24,16 +25,38 @@ export class MemoryService {
    * Converts text into a vector embedding using text-embedding-004
    */
   static async generateEmbedding(text: string): Promise<number[]> {
-    try {
-      const result = await ai.models.embedContent({
-        model: 'gemini-embedding-2-preview',
-        contents: [text],
-      });
-      return result.embeddings[0].values;
-    } catch (error) {
-      console.error('Failed to generate embedding:', error);
+    if (isAiCooldownActive()) {
+      console.warn('[Memory] AI Cooldown active, skipping embedding generation.');
       return [];
     }
+
+    let retries = 2;
+    while (retries > 0) {
+      try {
+        const result = await ai.models.embedContent({
+          model: 'gemini-embedding-2-preview',
+          contents: [text],
+        });
+        return result.embeddings[0].values;
+      } catch (error: any) {
+        const isQuotaError = error?.status === 'RESOURCE_EXHAUSTED' || 
+                           error?.code === 429 || 
+                           error?.message?.includes('quota') ||
+                           error?.message?.includes('429');
+        
+        if (isQuotaError) {
+          console.error('[Memory] Quota exhausted for embedding. Retrying...');
+          retries--;
+          if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
+          }
+        }
+        console.error('Failed to generate embedding:', error);
+        return [];
+      }
+    }
+    return [];
   }
 
   /**

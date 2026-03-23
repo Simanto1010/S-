@@ -1,9 +1,10 @@
 import axios from 'axios';
 import { toast } from 'sonner';
-import { GoogleGenAI, Type } from "@google/genai";
+import { Type } from "@google/genai";
 import { ActivityLogService } from './activityLogService';
 import { ErrorRetryService } from './errorRetryService';
 import { auth } from '../firebase';
+import { callAIWithRetry } from './aiService';
 
 /**
  * S+ UNIVERSAL AI CONNECTOR SERVICE 2.0
@@ -39,8 +40,6 @@ export interface ConnectorTemplate {
 }
 
 export class ConnectorService {
-  private static ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-
   private static async fetchWithRetry(url: string, options: any, retries = 3, backoff = 1000) {
     return ErrorRetryService.execute(
       async () => {
@@ -172,7 +171,7 @@ export class ConnectorService {
     toast.info('AI Core is analyzing API documentation...');
     
     try {
-      const response = await this.ai.models.generateContent({
+      const response = await callAIWithRetry({
         model: "gemini-3.1-flash-lite-preview",
         contents: `Analyze this API URL/Documentation: ${apiUrl}
         Identify the platform name, category, authentication requirements, and key endpoints/actions.
