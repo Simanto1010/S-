@@ -12,6 +12,9 @@ export function useAdminAuth() {
   const [lastActivity, setLastActivity] = useState(Date.now());
   const [resendCooldown, setResendCooldown] = useState(0);
   const [sessionId, setSessionId] = useState(() => localStorage.getItem('admin_session_id'));
+  const [threats, setThreats] = useState<any[]>([]);
+  const [riskScore, setRiskScore] = useState(0);
+  const [aiRecommendations, setAiRecommendations] = useState<string[]>([]);
 
   const maskedEmail = ADMIN_EMAIL.replace(/(.{1}).*(@.*)/, "$1****$2");
 
@@ -237,6 +240,62 @@ export function useAdminAuth() {
     };
   }, [isVerified, lastActivity, logout]);
 
+  // Level 5: Threat Monitoring
+  useEffect(() => {
+    if (!isVerified) return;
+
+    const fetchThreats = async () => {
+      try {
+        const res = await fetch(`/api/admin/threats?email=${ADMIN_EMAIL}`);
+        if (res.ok) {
+          const data = await res.json();
+          setThreats(data.threats);
+          if (data.threats.length > 0) {
+            setRiskScore(data.threats[0].riskScore);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch threats:', error);
+      }
+    };
+
+    fetchThreats();
+    const interval = setInterval(fetchThreats, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }, [isVerified]);
+
+  // Level 5: AI Recommendations
+  useEffect(() => {
+    if (!isVerified || threats.length === 0) return;
+
+    const generateRecommendations = async () => {
+      try {
+        const { GoogleGenAI } = await import('@google/genai');
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const latestThreat = threats[0];
+        
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: `As a security expert, analyze this risk assessment and provide 3 short, actionable recommendations for the admin.
+          Risk Score: ${latestThreat.riskScore}/100
+          Level: ${latestThreat.riskLevel}
+          Reasons: ${latestThreat.details}
+          
+          Format: Return a JSON array of strings.`,
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+        
+        setAiRecommendations(JSON.parse(response.text));
+      } catch (e) {
+        console.error("Failed to generate AI recommendations:", e);
+      }
+    };
+
+    generateRecommendations();
+  }, [isVerified, threats]);
+
   return {
     isVerified,
     isOtpSent,
@@ -250,6 +309,9 @@ export function useAdminAuth() {
     maskedEmail,
     resendCooldown,
     sessionId,
+    threats,
+    riskScore,
+    aiRecommendations,
     isAdminEmail: auth.currentUser?.email === ADMIN_EMAIL,
     isAdminRole: async () => {
       if (!auth.currentUser) return false;

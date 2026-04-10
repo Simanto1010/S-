@@ -334,6 +334,22 @@
         "isValid": { "type": "boolean" }
       },
       "required": ["email", "sessionId", "isValid"]
+    },
+    "AdminThreat": {
+      "title": "AI Security Threat",
+      "description": "AI detected security threat or suspicious activity.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "riskScore": { "type": "number" },
+        "riskLevel": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "action": { "type": "string" },
+        "device": { "type": "string" },
+        "ip": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "riskScore", "riskLevel", "timestamp"]
     }
   },
   "firestore": {
@@ -428,6 +444,10 @@
     "/adminSessions/{sessionId}": {
       "schema": "AdminSession",
       "description": "Admin active sessions"
+    },
+    "/adminThreats/{threatId}": {
+      "schema": "AdminThreat",
+      "description": "AI detected security threats"
     }
   }
 }

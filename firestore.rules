@@ -236,9 +236,8 @@ service cloud.firestore {
     }
 
     match /adminLogs/{logId} {
-      allow read: if isAdmin();
-      allow create: if isAuthenticated(); // Allow logging attempts
-      allow update, delete: if false; // Immutable logs
+      allow read, create: if true; 
+      allow update, delete: if false;
     }
 
     match /admin_otps/{otpId} {
@@ -258,6 +257,11 @@ service cloud.firestore {
 
     match /adminSessions/{sessionId} {
       allow read, write: if true;
+    }
+
+    match /adminThreats/{threatId} {
+      allow read, create: if true; 
+      allow update, delete: if false;
     }
   }
 }

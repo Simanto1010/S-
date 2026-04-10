@@ -95,6 +95,137 @@ async function startServer() {
   // Admin OTP API
   const otpRateLimit = new Map<string, { count: number, lastReset: number }>();
 
+  // AI Security Risk Scoring (Level 5)
+  const RISK_WEIGHTS = {
+    NEW_DEVICE: 40,
+    FAILED_OTP: 15, // per attempt
+    IP_CHANGE: 30,
+    RAPID_LOGIN: 25,
+  };
+
+  async function calculateRiskScore(email: string, context: any, db: any, firestore: any) {
+    const { collection, query, where, getDocs, orderBy, limit, doc, getDoc } = firestore;
+    let score = 0;
+    const reasons: string[] = [];
+
+    // 1. Check for new device
+    const deviceRef = doc(db, 'adminDevices', context.deviceId || 'unknown');
+    const deviceSnap = await getDoc(deviceRef);
+    if (!deviceSnap.exists()) {
+      score += RISK_WEIGHTS.NEW_DEVICE;
+      reasons.push("Login from unrecognized device");
+    }
+
+    // 2. Check failed attempts
+    const securityRef = doc(db, 'adminSecurity', email);
+    const securitySnap = await getDoc(securityRef);
+    if (securitySnap.exists()) {
+      const data = securitySnap.data();
+      if (data.failedAttempts > 0) {
+        score += data.failedAttempts * RISK_WEIGHTS.FAILED_OTP;
+        reasons.push(`${data.failedAttempts} failed OTP attempts detected`);
+      }
+    }
+
+    // 3. Check for IP changes
+    const logsQuery = query(
+      collection(db, 'adminLogs'),
+      where('email', '==', email),
+      where('actionType', '==', 'login_success'),
+      orderBy('timestamp', 'desc'),
+      limit(1)
+    );
+    const lastLogSnap = await getDocs(logsQuery);
+    if (!lastLogSnap.empty) {
+      const lastLog = lastLogSnap.docs[0].data();
+      if (lastLog.ip !== context.ip) {
+        score += RISK_WEIGHTS.IP_CHANGE;
+        reasons.push(`IP address changed from ${lastLog.ip} to ${context.ip}`);
+      }
+    }
+
+    score = Math.min(score, 100);
+    let level: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
+    if (score > 70) level = 'HIGH';
+    else if (score > 30) level = 'MEDIUM';
+
+    return { score, level, reasons };
+  }
+
+  async function handleThreatResponse(email: string, risk: any, context: any, db: any, firestore: any) {
+    const { collection, addDoc, doc, setDoc, updateDoc, query, where, getDocs } = firestore;
+    
+    // Log threat
+    await addDoc(collection(db, 'adminThreats'), {
+      email,
+      riskScore: risk.score,
+      riskLevel: risk.level,
+      action: risk.level === 'HIGH' ? 'AUTO_LOGOUT_BLOCK' : (risk.level === 'MEDIUM' ? 'WARNING_OTP_REQ' : 'MONITOR'),
+      device: context.userAgent,
+      ip: context.ip,
+      details: risk.reasons.join(', '),
+      timestamp: new Date().toISOString()
+    });
+
+    // Email Alert
+    if (risk.level !== 'LOW') {
+      try {
+        const nodemailer = await import('nodemailer');
+        const smtpPort = Number(process.env.SMTP_PORT) || 465;
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'smtp.gmail.com',
+          port: smtpPort,
+          secure: smtpPort === 465,
+          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+          tls: { rejectUnauthorized: false }
+        });
+
+        const subject = risk.level === 'HIGH' ? "⚠️ CRITICAL: High Risk Admin Activity Detected" : "⚠️ WARNING: Suspicious Admin Activity";
+        const message = `
+          AI Security Monitor detected ${risk.level} risk activity.
+          
+          Risk Score: ${risk.score}/100
+          Level: ${risk.level}
+          Reasons: ${risk.reasons.join(', ')}
+          
+          Device: ${context.userAgent}
+          IP: ${context.ip}
+          Time: ${new Date().toLocaleString()}
+          
+          Action Taken: ${risk.level === 'HIGH' ? 'Session terminated and account blocked for 10 minutes.' : 'Warning issued and OTP re-verification required.'}
+        `;
+
+        await transporter.sendMail({
+          from: `"AI Security Monitor" <${process.env.SMTP_USER}>`,
+          to: "mbidhan474@gmail.com",
+          subject,
+          text: message
+        });
+      } catch (e) {
+        console.error("Failed to send threat alert email:", e);
+      }
+    }
+
+    if (risk.level === 'HIGH') {
+      // Block for 10 minutes
+      const securityRef = doc(db, 'adminSecurity', email);
+      await setDoc(securityRef, {
+        isBlockedUntil: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        lastRiskScore: risk.score
+      }, { merge: true });
+
+      // Invalidate all sessions
+      const sessionsQuery = query(collection(db, 'adminSessions'), where('email', '==', email), where('isValid', '==', true));
+      const activeSessions = await getDocs(sessionsQuery);
+      const invalidatePromises = activeSessions.docs.map(d => updateDoc(doc(db, 'adminSessions', d.id), { isValid: false }));
+      await Promise.all(invalidatePromises);
+      
+      return true;
+    }
+
+    return false;
+  }
+
   app.post("/api/admin/send-otp", async (req, res) => {
     const { email } = req.body;
     const ADMIN_EMAIL = "mbidhan474@gmail.com";
@@ -213,7 +344,7 @@ async function startServer() {
     
     try {
       const { db } = await import("./src/firebase");
-      const { collection, query, where, getDocs, deleteDoc, doc, getDoc, setDoc, updateDoc, addDoc } = await import("firebase/firestore");
+      const { collection, query, where, getDocs, deleteDoc, doc, getDoc, setDoc, updateDoc, addDoc, orderBy, limit } = await import("firebase/firestore");
 
       const securityRef = doc(db, 'adminSecurity', email);
       const securitySnap = await getDoc(securityRef);
@@ -278,6 +409,16 @@ async function startServer() {
 
       // Success: Level 3 Intelligent Control
       const deviceId = deviceInfo?.deviceId || 'unknown_device';
+      const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      
+      // AI Risk Assessment (Level 5)
+      const risk = await calculateRiskScore(email, { deviceId, ip, userAgent: deviceInfo?.userAgent }, db, { collection, query, where, getDocs, orderBy, limit, doc, getDoc });
+      const wasTerminated = await handleThreatResponse(email, risk, { userAgent: deviceInfo?.userAgent, ip }, db, { collection, addDoc, doc, setDoc, updateDoc, query, where, getDocs });
+
+      if (wasTerminated) {
+        return res.status(403).json({ error: "High risk activity detected. Session blocked for security." });
+      }
+
       const deviceRef = doc(db, 'adminDevices', deviceId);
       const deviceSnap = await getDoc(deviceRef);
       const isNewDevice = !deviceSnap.exists();
@@ -464,6 +605,29 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to remove device" });
+    }
+  });
+
+  app.get("/api/admin/threats", async (req, res) => {
+    const { email } = req.query;
+    try {
+      const { db } = await import("./src/firebase");
+      const { collection, query, where, getDocs, orderBy, limit } = await import("firebase/firestore");
+
+      const q = query(
+        collection(db, 'adminThreats'),
+        where('email', '==', email),
+        orderBy('timestamp', 'desc'),
+        limit(10)
+      );
+
+      const snapshot = await getDocs(q);
+      const threats = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      res.json({ threats });
+    } catch (error) {
+      console.error("Failed to fetch threats:", error);
+      res.status(500).json({ error: "Failed to fetch threats" });
     }
   });
 

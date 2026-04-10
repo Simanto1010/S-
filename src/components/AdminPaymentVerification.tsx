@@ -21,7 +21,8 @@ import { useAdminAuth } from '../hooks/useAdminAuth';
 export default function AdminPaymentVerification() {
   const { 
     logout, logoutAllDevices, resetSecurity, removeDevice,
-    isLoading: isLoggingOut, sessionId 
+    isLoading: isLoggingOut, sessionId,
+    threats, riskScore, aiRecommendations
   } = useAdminAuth();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -324,6 +325,106 @@ export default function AdminPaymentVerification() {
         </div>
       ) : (
         <div className="space-y-8">
+          {/* AI Security Monitor Section */}
+          <div className="bg-[#0a0a0a] border border-cyan-500/20 rounded-2xl p-6 overflow-hidden relative group">
+            <div className="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
+              <Sparkles size={120} className="text-cyan-400" />
+            </div>
+            
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 relative z-10">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-cyan-500/10 rounded-xl border border-cyan-500/20">
+                  <Shield size={24} className="text-cyan-400" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white">AI Security Monitor</h3>
+                  <p className="text-xs text-white/40 uppercase tracking-widest">Real-time threat detection & risk scoring</p>
+                </div>
+              </div>
+              
+              <div className={`px-6 py-3 rounded-2xl border flex items-center gap-3 transition-all ${
+                riskScore > 70 ? 'bg-red-500/10 border-red-500/30 text-red-400' : 
+                riskScore > 30 ? 'bg-amber-500/10 border-amber-500/30 text-amber-400' : 
+                'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+              }`}>
+                <Activity size={18} className={riskScore > 30 ? 'animate-pulse' : ''} />
+                <div className="flex flex-col">
+                  <span className="text-[10px] uppercase tracking-tighter opacity-60">Current Risk</span>
+                  <span className="text-lg font-black leading-none">{riskScore}/100</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 relative z-10">
+              {/* Recent Threats */}
+              <div className="space-y-4">
+                <h4 className="text-xs font-bold text-white/60 uppercase tracking-widest flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-amber-400" />
+                  Recent Threats
+                </h4>
+                <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                  {threats.length === 0 ? (
+                    <div className="p-8 bg-white/5 rounded-2xl border border-white/5 flex flex-col items-center justify-center text-center">
+                      <CheckCircle size={32} className="text-emerald-500/40 mb-3" />
+                      <p className="text-sm text-white/40">No threats detected in the last 24 hours</p>
+                    </div>
+                  ) : (
+                    threats.map((threat) => (
+                      <div key={threat.id} className="p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/[0.07] transition-all">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                            threat.riskLevel === 'HIGH' ? 'bg-red-500/20 text-red-400' : 
+                            threat.riskLevel === 'MEDIUM' ? 'bg-amber-500/20 text-amber-400' : 
+                            'bg-emerald-500/20 text-emerald-400'
+                          }`}>{threat.riskLevel} RISK</span>
+                          <span className="text-[10px] text-white/30">{new Date(threat.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        <p className="text-sm text-white/80 mb-3 leading-relaxed">{threat.details}</p>
+                        <div className="flex flex-wrap gap-4 text-[10px] text-white/40">
+                          <span className="flex items-center gap-1.5"><Globe size={12} /> {threat.ip}</span>
+                          <span className="flex items-center gap-1.5"><ShieldAlert size={12} /> {threat.action}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* AI Recommendations */}
+              <div className="space-y-4">
+                <h4 className="text-xs font-bold text-white/60 uppercase tracking-widest flex items-center gap-2">
+                  <Sparkles size={14} className="text-cyan-400" />
+                  AI Recommendations
+                </h4>
+                <div className="bg-cyan-500/5 border border-cyan-500/10 rounded-2xl p-6 h-full">
+                  {aiRecommendations.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full py-8 text-center">
+                      <RefreshCw size={32} className="text-cyan-400/40 animate-spin mb-4" />
+                      <p className="text-sm text-white/40">AI is analyzing current security patterns...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {aiRecommendations.map((rec, i) => (
+                        <motion.div 
+                          initial={{ opacity: 0, x: 20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: i * 0.1 }}
+                          key={i} 
+                          className="flex items-start gap-4"
+                        >
+                          <div className="w-6 h-6 bg-cyan-500/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 border border-cyan-500/20">
+                            <span className="text-[10px] font-black text-cyan-400">{i + 1}</span>
+                          </div>
+                          <p className="text-sm text-white/70 leading-relaxed">{rec}</p>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Security Control Center */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Quick Controls */}
