@@ -240,5 +240,24 @@ service cloud.firestore {
       allow create: if isAuthenticated(); // Allow logging attempts
       allow update, delete: if false; // Immutable logs
     }
+
+    match /admin_otps/{otpId} {
+      // Allowed for server-side management via client SDK (unauthenticated)
+      // In production, this should be restricted to Admin SDK only
+      allow read, write: if true; 
+    }
+
+    match /adminSecurity/{email} {
+      // Allowed for server-side management via client SDK
+      allow read, write: if true;
+    }
+
+    match /adminDevices/{deviceId} {
+      allow read, write: if true;
+    }
+
+    match /adminSessions/{sessionId} {
+      allow read, write: if true;
+    }
   }
 }

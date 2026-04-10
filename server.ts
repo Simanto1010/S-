@@ -93,75 +93,420 @@ async function startServer() {
   });
 
   // Admin OTP API
-  const otpStore = new Map<string, { otp: string, expires: number, attempts: number, lastRequest: number }>();
-  
+  const otpRateLimit = new Map<string, { count: number, lastReset: number }>();
+
   app.post("/api/admin/send-otp", async (req, res) => {
     const { email } = req.body;
-    if (email !== "mbidhan474@gmail.com") {
+    const ADMIN_EMAIL = "mbidhan474@gmail.com";
+
+    if (email !== ADMIN_EMAIL) {
+      console.warn(`[ADMIN SECURITY] Unauthorized OTP attempt for: ${email}`);
       return res.status(403).json({ error: "Access Denied" });
     }
 
-    const now = Date.now();
-    const stored = otpStore.get(email);
-    
-    // Rate limiting: max 3 requests per minute
-    if (stored && now - stored.lastRequest < 60000 && stored.attempts >= 3) {
-      return res.status(429).json({ error: "Too many requests. Please wait 60 seconds." });
-    }
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    otpStore.set(email, { 
-      otp, 
-      expires: now + 60 * 1000, // 60 seconds expiry
-      attempts: (stored?.attempts || 0) + 1,
-      lastRequest: now
-    });
-
-    console.log(`[ADMIN OTP] OTP for ${email}: ${otp}`);
-    
     try {
-      // In a real app, use nodemailer with real SMTP
-      // For demo, we simulate success and log to console
-      // If you have SMTP credentials, configure them here:
-      /*
+      const { db } = await import("./src/firebase");
+      const { collection, addDoc, query, where, getDocs, deleteDoc, doc, getDoc, setDoc, updateDoc } = await import("firebase/firestore");
+
+      // 1. Check persistent block status
+      const securityRef = doc(db, 'adminSecurity', email);
+      const securitySnap = await getDoc(securityRef);
+      const securityData = securitySnap.exists() ? securitySnap.data() : null;
+
+      if (securityData?.isBlockedUntil) {
+        const blockedUntil = new Date(securityData.isBlockedUntil);
+        if (blockedUntil > new Date()) {
+          const waitMinutes = Math.ceil((blockedUntil.getTime() - Date.now()) / 60000);
+          return res.status(429).json({ error: `Too many attempts. Blocked for ${waitMinutes} more minutes.` });
+        }
+      }
+
+      // 2. Rate limiting: max 5 requests per 5 minutes (In-memory)
+      const now = Date.now();
+      const limit = otpRateLimit.get(email) || { count: 0, lastReset: now };
+      
+      if (now - limit.lastReset > 300000) { // 5 minutes
+        limit.count = 0;
+        limit.lastReset = now;
+      }
+
+      if (limit.count >= 5) {
+        return res.status(429).json({ error: "Too many requests. Please wait 5 minutes." });
+      }
+      
+      limit.count++;
+      otpRateLimit.set(email, limit);
+
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date(Date.now() + 60 * 1000); // 60 seconds expiry
+
+      console.log(`[ADMIN OTP] Generated OTP for ${email}: ${otp}`);
+      
+      // Cleanup old OTPs for this email
+      const q = query(collection(db, 'admin_otps'), where('email', '==', email));
+      const oldOtps = await getDocs(q);
+      const deletePromises = oldOtps.docs.map(d => deleteDoc(doc(db, 'admin_otps', d.id)));
+      await Promise.all(deletePromises);
+
+      // Save new OTP
+      await addDoc(collection(db, 'admin_otps'), {
+        email,
+        otp,
+        expiresAt: expiresAt.toISOString(),
+        createdAt: new Date().toISOString()
+      });
+
+      console.log(`[ADMIN OTP] OTP saved to Firestore for ${email}`);
+
+      // 3. Send email using Nodemailer
       const nodemailer = await import('nodemailer');
+      const smtpPort = Number(process.env.SMTP_PORT) || 465;
+      
       const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT),
-        secure: true,
+        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        port: smtpPort,
+        secure: smtpPort === 465,
         auth: {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASS
+        },
+        tls: {
+          rejectUnauthorized: false
         }
       });
+
+      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+        console.warn("[ADMIN OTP] SMTP credentials missing. OTP logged to console only.");
+        return res.json({ 
+          success: true, 
+          message: "OTP generated (Check console for debug mode)",
+          debug: process.env.NODE_ENV !== 'production' ? otp : undefined
+        });
+      }
+
       await transporter.sendMail({
-        from: '"S+ System" <noreply@splus.com>',
+        from: `"S+ System Admin" <${process.env.SMTP_USER}>`,
         to: email,
         subject: "Your S+ Admin Verification Code",
-        text: `Your 6-digit code is: ${otp} (valid for 60 seconds)`
+        html: `
+          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 500px;">
+            <h2 style="color: #06b6d4;">S+ System Admin Verification</h2>
+            <p>Your 6-digit verification code is:</p>
+            <div style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #000; margin: 20px 0;">${otp}</div>
+            <p style="color: #666; font-size: 14px;">This code is valid for <b>60 seconds</b>.</p>
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+            <p style="font-size: 12px; color: #999;">If you did not request this code, please ignore this email.</p>
+          </div>
+        `
       });
-      */
-      
+
+      console.log(`[ADMIN OTP] Email sent successfully to ${email}`);
       res.json({ success: true, message: "OTP sent to your email (valid for 60s)" });
-    } catch (error) {
-      console.error("Failed to send email:", error);
-      res.status(500).json({ error: "Failed to send verification code" });
+    } catch (error: any) {
+      console.error("[ADMIN OTP] Failed to process OTP:", error);
+      res.status(500).json({ error: "Failed to send verification code. Try again." });
     }
   });
 
-  app.post("/api/admin/verify-otp", (req, res) => {
-    const { email, otp } = req.body;
-    const stored = otpStore.get(email);
+  app.post("/api/admin/verify-otp", async (req, res) => {
+    const { email, otp, deviceInfo } = req.body;
+    
+    try {
+      const { db } = await import("./src/firebase");
+      const { collection, query, where, getDocs, deleteDoc, doc, getDoc, setDoc, updateDoc, addDoc } = await import("firebase/firestore");
 
-    if (!stored || stored.expires < Date.now()) {
-      return res.status(400).json({ error: "Invalid or expired code" });
+      const securityRef = doc(db, 'adminSecurity', email);
+      const securitySnap = await getDoc(securityRef);
+      const securityData = securitySnap.exists() ? securitySnap.data() : { failedAttempts: 0 };
+
+      // 1. Check if currently blocked
+      if (securityData.isBlockedUntil) {
+        const blockedUntil = new Date(securityData.isBlockedUntil);
+        if (blockedUntil > new Date()) {
+          return res.status(429).json({ error: "Too many attempts. Try again later." });
+        }
+      }
+
+      const q = query(
+        collection(db, 'admin_otps'), 
+        where('email', '==', email),
+        where('otp', '==', otp)
+      );
+      
+      const snapshot = await getDocs(q);
+      
+      if (snapshot.empty) {
+        // Failed attempt
+        const newFailedAttempts = (securityData.failedAttempts || 0) + 1;
+        const updateData: any = {
+          email,
+          failedAttempts: newFailedAttempts,
+          lastAttemptTime: new Date().toISOString()
+        };
+
+        if (newFailedAttempts >= 5) {
+          updateData.isBlockedUntil = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // Block for 10 mins on level 3
+        }
+
+        await setDoc(securityRef, updateData, { merge: true });
+        
+        // Log failure
+        await addDoc(collection(db, 'adminLogs'), {
+          email,
+          actionType: 'login_failure',
+          status: 'failed',
+          details: `Failed OTP attempt. Total: ${newFailedAttempts}`,
+          device: deviceInfo?.userAgent || 'Unknown',
+          ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+          timestamp: new Date().toISOString()
+        });
+
+        return res.status(400).json({ 
+          error: newFailedAttempts >= 5 
+            ? "Too many attempts. Blocked for 10 minutes." 
+            : `Invalid code. ${5 - newFailedAttempts} attempts remaining.` 
+        });
+      }
+
+      const otpData = snapshot.docs[0].data();
+      const expiresAt = new Date(otpData.expiresAt);
+
+      if (expiresAt < new Date()) {
+        await deleteDoc(doc(db, 'admin_otps', snapshot.docs[0].id));
+        return res.status(400).json({ error: "Code has expired" });
+      }
+
+      // Success: Level 3 Intelligent Control
+      const deviceId = deviceInfo?.deviceId || 'unknown_device';
+      const deviceRef = doc(db, 'adminDevices', deviceId);
+      const deviceSnap = await getDoc(deviceRef);
+      const isNewDevice = !deviceSnap.exists();
+
+      // Track Device
+      await setDoc(deviceRef, {
+        email,
+        deviceId,
+        userAgent: deviceInfo?.userAgent,
+        platform: deviceInfo?.platform,
+        lastUsed: new Date().toISOString(),
+        isTrusted: true
+      }, { merge: true });
+
+      // Single Session Management
+      const sessionId = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      
+      // Invalidate old sessions
+      if (securityData.activeSessionId) {
+        const oldSessionRef = doc(db, 'adminSessions', securityData.activeSessionId);
+        const oldSessionSnap = await getDoc(oldSessionRef);
+        if (oldSessionSnap.exists()) {
+          await updateDoc(oldSessionRef, { isValid: false });
+        }
+      }
+
+      // Create new session
+      await setDoc(doc(db, 'adminSessions', sessionId), {
+        email,
+        sessionId,
+        deviceId,
+        createdAt: new Date().toISOString(),
+        lastSeen: new Date().toISOString(),
+        isValid: true
+      });
+
+      // Update security state
+      await setDoc(securityRef, {
+        email,
+        failedAttempts: 0,
+        isBlockedUntil: null,
+        lastLoginTime: new Date().toISOString(),
+        activeSessionId: sessionId
+      }, { merge: true });
+
+      // Cleanup used OTP
+      await deleteDoc(doc(db, 'admin_otps', snapshot.docs[0].id));
+      
+      // Log Success
+      await addDoc(collection(db, 'adminLogs'), {
+        email,
+        actionType: 'login_success',
+        status: 'success',
+        details: `Successful login from ${isNewDevice ? 'new' : 'recognized'} device`,
+        device: deviceInfo?.userAgent || 'Unknown',
+        ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+        timestamp: new Date().toISOString()
+      });
+
+      // Send Login Alert Email (Enhanced for Level 3)
+      try {
+        const nodemailer = await import('nodemailer');
+        const smtpPort = Number(process.env.SMTP_PORT) || 465;
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'smtp.gmail.com',
+          port: smtpPort,
+          secure: smtpPort === 465,
+          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+          tls: { rejectUnauthorized: false }
+        });
+
+        if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+          const alertType = isNewDevice ? "NEW DEVICE LOGIN" : "Admin Login";
+          const alertColor = isNewDevice ? "#e11d48" : "#06b6d4";
+
+          await transporter.sendMail({
+            from: `"S+ Security Alert" <${process.env.SMTP_USER}>`,
+            to: email,
+            subject: `S+ Security Alert: ${alertType}`,
+            html: `
+              <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 500px;">
+                <h2 style="color: ${alertColor};">${alertType}</h2>
+                <p>A successful admin login was detected for your account.</p>
+                <div style="background: #f9fafb; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                  <p style="margin: 5px 0;"><b>Time:</b> ${new Date().toLocaleString()}</p>
+                  <p style="margin: 5px 0;"><b>Device:</b> ${deviceInfo?.userAgent || 'Unknown'}</p>
+                  <p style="margin: 5px 0;"><b>Platform:</b> ${deviceInfo?.platform || 'Unknown'}</p>
+                  <p style="margin: 5px 0;"><b>Status:</b> ${isNewDevice ? 'New Device Detected' : 'Recognized Device'}</p>
+                  <p style="margin: 5px 0;"><b>IP:</b> ${req.headers['x-forwarded-for'] || req.socket.remoteAddress}</p>
+                </div>
+                <p style="font-size: 14px; color: #666;">If this wasn't you, please secure your account immediately.</p>
+              </div>
+            `
+          });
+        }
+      } catch (emailErr) {
+        console.error("[ADMIN SECURITY] Failed to send login alert:", emailErr);
+      }
+
+      console.log(`[ADMIN OTP] Successful verification for ${email}. Session: ${sessionId}`);
+      res.json({ success: true, sessionId });
+    } catch (error) {
+      console.error("[ADMIN OTP] Verification error:", error);
+      res.status(500).json({ error: "Verification failed" });
     }
+  });
 
-    if (stored.otp === otp) {
-      otpStore.delete(email);
+  app.post("/api/admin/logout-all", async (req, res) => {
+    const { email } = req.body;
+    try {
+      const { db } = await import("./src/firebase");
+      const { collection, query, where, getDocs, updateDoc, doc, addDoc } = await import("firebase/firestore");
+
+      const q = query(collection(db, 'adminSessions'), where('email', '==', email), where('isValid', '==', true));
+      const snapshot = await getDocs(q);
+      
+      const promises = snapshot.docs.map(d => updateDoc(doc(db, 'adminSessions', d.id), { isValid: false }));
+      await Promise.all(promises);
+
+      // Log action
+      await addDoc(collection(db, 'adminLogs'), {
+        email,
+        actionType: 'logout_all_devices',
+        status: 'success',
+        details: `Invalidated ${snapshot.size} active sessions`,
+        ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+        timestamp: new Date().toISOString()
+      });
+
+      res.json({ success: true, count: snapshot.size });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to logout all devices" });
+    }
+  });
+
+  app.post("/api/admin/reset-security", async (req, res) => {
+    const { email } = req.body;
+    try {
+      const { db } = await import("./src/firebase");
+      const { doc, setDoc, addDoc, collection } = await import("firebase/firestore");
+
+      await setDoc(doc(db, 'adminSecurity', email), {
+        email,
+        failedAttempts: 0,
+        isBlockedUntil: null,
+        lastAttemptTime: null
+      }, { merge: true });
+
+      // Log action
+      await addDoc(collection(db, 'adminLogs'), {
+        email,
+        actionType: 'security_reset',
+        status: 'success',
+        details: 'Security state reset manually',
+        ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+        timestamp: new Date().toISOString()
+      });
+
       res.json({ success: true });
-    } else {
-      res.status(400).json({ error: "Invalid or expired code" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reset security" });
+    }
+  });
+
+  app.delete("/api/admin/devices/:deviceId", async (req, res) => {
+    const { deviceId } = req.params;
+    const { email } = req.body;
+    try {
+      const { db } = await import("./src/firebase");
+      const { doc, deleteDoc, addDoc, collection } = await import("firebase/firestore");
+
+      await deleteDoc(doc(db, 'adminDevices', deviceId));
+
+      // Log action
+      await addDoc(collection(db, 'adminLogs'), {
+        email,
+        actionType: 'remove_device',
+        status: 'success',
+        details: `Removed trusted device: ${deviceId}`,
+        ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+        timestamp: new Date().toISOString()
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to remove device" });
+    }
+  });
+
+  app.post("/api/admin/log-action", async (req, res) => {
+    const { email, actionType, details, status, deviceInfo } = req.body;
+    try {
+      const { db } = await import("./src/firebase");
+      const { collection, addDoc } = await import("firebase/firestore");
+
+      await addDoc(collection(db, 'adminLogs'), {
+        email,
+        actionType,
+        status: status || 'success',
+        details: details || '',
+        device: deviceInfo?.userAgent || 'Unknown',
+        ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+        timestamp: new Date().toISOString()
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to log action" });
+    }
+  });
+
+  app.post("/api/admin/validate-session", async (req, res) => {
+    const { sessionId, email } = req.body;
+    try {
+      const { db } = await import("./src/firebase");
+      const { doc, getDoc, updateDoc } = await import("firebase/firestore");
+
+      const sessionRef = doc(db, 'adminSessions', sessionId);
+      const sessionSnap = await getDoc(sessionRef);
+
+      if (!sessionSnap.exists() || !sessionSnap.data().isValid || sessionSnap.data().email !== email) {
+        return res.status(401).json({ error: "Session invalid or expired" });
+      }
+
+      // Update last seen
+      await updateDoc(sessionRef, { lastSeen: new Date().toISOString() });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Session validation failed" });
     }
   });
 

@@ -81,7 +81,7 @@ export const PredictiveDashboard: React.FC<PredictiveDashboardProps> = ({ userId
 
         <div className="h-[200px] sm:h-[300px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={forecastData?.forecast}>
+            <AreaChart data={Array.isArray(forecastData?.forecast) ? forecastData.forecast : []}>
               <defs>
                 <linearGradient id="colorCurrent" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>

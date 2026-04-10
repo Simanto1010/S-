@@ -11,11 +11,29 @@ interface AdminGuardProps {
 export default function AdminGuard({ children }: AdminGuardProps) {
   const { 
     isVerified, isOtpSent, isLoading, sendOtp, 
-    verifyOtp, isAdminEmail, maskedEmail, resendCooldown 
+    verifyOtp, isAdminEmail, maskedEmail, resendCooldown,
+    isAdminRole
   } = useAdminAuth();
   const [otp, setOtp] = useState('');
+  const [hasAdminRole, setHasAdminRole] = React.useState<boolean | null>(null);
 
-  if (!isAdminEmail) {
+  React.useEffect(() => {
+    const checkRole = async () => {
+      const isRole = await isAdminRole();
+      setHasAdminRole(isRole);
+    };
+    checkRole();
+  }, [isAdminRole]);
+
+  if (hasAdminRole === null) {
+    return (
+      <div className="min-h-[400px] flex items-center justify-center">
+        <Loader2 className="animate-spin text-cyan-400" size={32} />
+      </div>
+    );
+  }
+
+  if (!isAdminEmail || !hasAdminRole) {
     return (
       <div className="min-h-[400px] flex flex-col items-center justify-center p-8 bg-white/5 border border-white/10 rounded-3xl">
         <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-400 mb-6">
@@ -23,7 +41,7 @@ export default function AdminGuard({ children }: AdminGuardProps) {
         </div>
         <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
         <p className="text-zinc-500 text-center max-w-md">
-          This area is restricted to authorized administrators only. Your account ({auth.currentUser?.email}) does not have the necessary permissions.
+          This area is restricted to authorized administrators only. Your account ({auth.currentUser?.email}) does not have the necessary permissions or role.
         </p>
       </div>
     );
@@ -86,26 +104,33 @@ export default function AdminGuard({ children }: AdminGuardProps) {
             </p>
             
             <div className="space-y-4">
-              <input
-                type="text"
-                maxLength={6}
-                value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                placeholder="000000"
-                className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 text-center text-3xl font-mono tracking-[0.5em] focus:outline-none focus:border-cyan-500/50 transition-colors"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                  placeholder="000000"
+                  className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 text-center text-3xl font-mono tracking-[0.5em] focus:outline-none focus:border-cyan-500/50 transition-colors"
+                />
+                <div className="absolute -bottom-6 left-0 right-0 text-[10px] text-zinc-500 uppercase tracking-widest">
+                  Code expires in 60 seconds
+                </div>
+              </div>
               
-              <button
-                onClick={() => verifyOtp(otp)}
-                disabled={isLoading || otp.length !== 6}
-                className="w-full py-4 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all"
-              >
-                {isLoading ? (
-                  <Loader2 className="animate-spin" size={20} />
-                ) : (
-                  'Verify & Access'
-                )}
-              </button>
+              <div className="pt-4">
+                <button
+                  onClick={() => verifyOtp(otp)}
+                  disabled={isLoading || otp.length !== 6}
+                  className="w-full py-4 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all"
+                >
+                  {isLoading ? (
+                    <Loader2 className="animate-spin" size={20} />
+                  ) : (
+                    'Verify & Access'
+                  )}
+                </button>
+              </div>
               
               <button
                 onClick={sendOtp}

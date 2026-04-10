@@ -11,8 +11,19 @@ export function useAdminAuth() {
   const [isLoading, setIsLoading] = useState(false);
   const [lastActivity, setLastActivity] = useState(Date.now());
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [sessionId, setSessionId] = useState(() => localStorage.getItem('admin_session_id'));
 
   const maskedEmail = ADMIN_EMAIL.replace(/(.{1}).*(@.*)/, "$1****$2");
+
+  // Device ID generation/retrieval
+  const getDeviceId = useCallback(() => {
+    let id = localStorage.getItem('admin_device_id');
+    if (!id) {
+      id = 'dev_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+      localStorage.setItem('admin_device_id', id);
+    }
+    return id;
+  }, []);
 
   useEffect(() => {
     if (resendCooldown > 0) {
@@ -57,15 +68,25 @@ export function useAdminAuth() {
   const verifyOtp = async (otp: string) => {
     setIsLoading(true);
     try {
+      const deviceInfo = {
+        deviceId: getDeviceId(),
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        language: navigator.language
+      };
+
       const res = await fetch('/api/admin/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: ADMIN_EMAIL, otp })
+        body: JSON.stringify({ email: ADMIN_EMAIL, otp, deviceInfo })
       });
 
       if (res.ok) {
+        const data = await res.json();
         setIsVerified(true);
+        setSessionId(data.sessionId);
         sessionStorage.setItem('admin_verified', 'true');
+        localStorage.setItem('admin_session_id', data.sessionId);
         setLastActivity(Date.now());
         toast.success('Admin access granted');
         await logAdminAction(ADMIN_EMAIL, 'otp_verification', 'success');
@@ -81,14 +102,121 @@ export function useAdminAuth() {
     }
   };
 
-  const logout = useCallback(() => {
-    setIsVerified(false);
-    setIsOtpSent(false);
-    sessionStorage.removeItem('admin_verified');
-    toast.info('Admin session ended');
+  const logout = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      await logAdminAction(ADMIN_EMAIL, 'logout', 'success');
+      const { signOut } = await import('firebase/auth');
+      await signOut(auth);
+      
+      // Clear all session and local storage
+      sessionStorage.clear();
+      localStorage.removeItem("adminAuth");
+      localStorage.removeItem("admin_verified");
+      localStorage.removeItem("admin_session_id");
+      
+      // Reset states
+      setIsVerified(false);
+      setIsOtpSent(false);
+      setSessionId(null);
+      
+      toast.success('Admin session ended successfully');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      sessionStorage.clear();
+      window.location.reload();
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  // Session timeout logic
+  const logoutAllDevices = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/admin/logout-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: ADMIN_EMAIL })
+      });
+      if (res.ok) {
+        toast.success('All devices logged out');
+        logout();
+      } else {
+        toast.error('Failed to logout all devices');
+      }
+    } catch (error) {
+      toast.error('Network error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resetSecurity = async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/admin/reset-security', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: ADMIN_EMAIL })
+      });
+      if (res.ok) {
+        toast.success('Security state reset successfully');
+      } else {
+        toast.error('Failed to reset security');
+      }
+    } catch (error) {
+      toast.error('Network error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const removeDevice = async (deviceId: string) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/devices/${deviceId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: ADMIN_EMAIL })
+      });
+      if (res.ok) {
+        toast.success('Device removed');
+      } else {
+        toast.error('Failed to remove device');
+      }
+    } catch (error) {
+      toast.error('Network error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Level 3: Session Validation Logic
+  useEffect(() => {
+    if (!isVerified || !sessionId) return;
+
+    const validateSession = async () => {
+      try {
+        const res = await fetch('/api/admin/validate-session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, email: ADMIN_EMAIL })
+        });
+
+        if (!res.ok) {
+          toast.error('Session invalidated by another login or expired');
+          logout();
+        }
+      } catch (error) {
+        console.error('Session validation error:', error);
+      }
+    };
+
+    const interval = setInterval(validateSession, 30000); // Validate every 30s
+    return () => clearInterval(interval);
+  }, [isVerified, sessionId, logout]);
+
+  // Session timeout logic (inactivity)
   useEffect(() => {
     if (!isVerified) return;
 
@@ -116,8 +244,17 @@ export function useAdminAuth() {
     sendOtp,
     verifyOtp,
     logout,
+    logoutAllDevices,
+    resetSecurity,
+    removeDevice,
     maskedEmail,
     resendCooldown,
-    isAdminEmail: auth.currentUser?.email === ADMIN_EMAIL
+    sessionId,
+    isAdminEmail: auth.currentUser?.email === ADMIN_EMAIL,
+    isAdminRole: async () => {
+      if (!auth.currentUser) return false;
+      const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
+      return userDoc.exists() && userDoc.data()?.role === 'admin';
+    }
   };
 }

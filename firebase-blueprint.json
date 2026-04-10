@@ -281,6 +281,59 @@
         "timestamp": { "type": "string", "format": "date-time" }
       },
       "required": ["email", "action", "status", "timestamp"]
+    },
+    "AdminOTP": {
+      "title": "Admin OTP",
+      "description": "Temporary storage for admin verification codes.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "otp": { "type": "string" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "otp", "expiresAt"]
+    },
+    "AdminSecurity": {
+      "title": "Admin Security State",
+      "description": "Persistent security tracking for admin accounts.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "failedAttempts": { "type": "number" },
+        "lastAttemptTime": { "type": "string", "format": "date-time" },
+        "lastLoginTime": { "type": "string", "format": "date-time" },
+        "isBlockedUntil": { "type": "string", "format": "date-time" },
+        "activeSessionId": { "type": "string" }
+      },
+      "required": ["email"]
+    },
+    "AdminDevice": {
+      "title": "Admin Trusted Device",
+      "description": "A device trusted for admin access.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "platform": { "type": "string" },
+        "lastUsed": { "type": "string", "format": "date-time" },
+        "isTrusted": { "type": "boolean" }
+      },
+      "required": ["email", "deviceId"]
+    },
+    "AdminSession": {
+      "title": "Admin Active Session",
+      "description": "Currently active admin session.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "deviceId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastSeen": { "type": "string", "format": "date-time" },
+        "isValid": { "type": "boolean" }
+      },
+      "required": ["email", "sessionId", "isValid"]
     }
   },
   "firestore": {
@@ -359,6 +412,22 @@
     "/adminLogs/{logId}": {
       "schema": "AdminLog",
       "description": "Admin security and action logs"
+    },
+    "/admin_otps/{otpId}": {
+      "schema": "AdminOTP",
+      "description": "Admin verification codes"
+    },
+    "/adminSecurity/{email}": {
+      "schema": "AdminSecurity",
+      "description": "Admin security tracking"
+    },
+    "/adminDevices/{deviceId}": {
+      "schema": "AdminDevice",
+      "description": "Admin trusted devices"
+    },
+    "/adminSessions/{sessionId}": {
+      "schema": "AdminSession",
+      "description": "Admin active sessions"
     }
   }
 }
