@@ -289,9 +289,10 @@
       "properties": {
         "email": { "type": "string" },
         "otp": { "type": "string" },
-        "expiresAt": { "type": "string", "format": "date-time" }
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["email", "otp", "expiresAt"]
+      "required": ["email", "otp", "expiresAt", "createdAt"]
     },
     "AdminSecurity": {
       "title": "Admin Security State",

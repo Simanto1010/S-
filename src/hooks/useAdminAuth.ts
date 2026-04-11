@@ -37,6 +37,7 @@ export function useAdminAuth() {
 
   const sendOtp = async () => {
     if (!auth.currentUser || auth.currentUser.email !== ADMIN_EMAIL) {
+      console.warn('[ADMIN AUTH] Unauthorized attempt to send OTP:', auth.currentUser?.email);
       toast.error('Access Denied');
       return;
     }
@@ -44,32 +45,69 @@ export function useAdminAuth() {
     if (resendCooldown > 0) return;
 
     setIsLoading(true);
+    
+    // 10-second timeout for sending OTP
+    const timeoutId = setTimeout(() => {
+      if (isLoading) {
+        setIsLoading(false);
+        toast.error('Request timed out. Please check your connection.');
+        console.warn('[ADMIN AUTH] sendOtp timed out after 10s');
+      }
+    }, 10000);
+
     try {
+      console.log('[ADMIN AUTH] Requesting OTP for:', ADMIN_EMAIL);
       const res = await fetch('/api/admin/send-otp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({ email: ADMIN_EMAIL })
       });
       
-      if (res.ok) {
+      clearTimeout(timeoutId);
+
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text();
+        console.error('[ADMIN AUTH] Non-JSON response from send-otp:', text.substring(0, 100));
+        throw new Error('Server returned invalid response format');
+      }
+
+      const data = await res.json();
+      console.log('[ADMIN AUTH] sendOtp response:', data);
+
+      if (res.ok && data.success) {
         setIsOtpSent(true);
         setResendCooldown(30);
-        toast.success(`OTP sent to ${maskedEmail}`);
+        toast.success(data.message || `OTP sent to ${maskedEmail}`);
         await logAdminAction(ADMIN_EMAIL, 'otp_request', 'success');
       } else {
-        const data = await res.json();
         toast.error(data.error || 'Failed to send OTP');
         await logAdminAction(ADMIN_EMAIL, 'otp_request', 'failed', data.error);
       }
-    } catch (error) {
-      toast.error('Network error');
+    } catch (error: any) {
+      console.error('[ADMIN AUTH] sendOtp error:', error);
+      toast.error(error.message || 'Network error');
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };
 
   const verifyOtp = async (otp: string) => {
     setIsLoading(true);
+    
+    // 5-second fallback to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      if (isLoading) {
+        setIsLoading(false);
+        toast.error('Verification timed out. Please try again.');
+        console.warn('[ADMIN AUTH] Verification timed out after 5s');
+      }
+    }, 5000);
+
     try {
       const deviceInfo = {
         deviceId: getDeviceId(),
@@ -78,29 +116,50 @@ export function useAdminAuth() {
         language: navigator.language
       };
 
+      console.log('[ADMIN AUTH] Verifying OTP for:', ADMIN_EMAIL);
       const res = await fetch('/api/admin/verify-otp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
         body: JSON.stringify({ email: ADMIN_EMAIL, otp, deviceInfo })
       });
 
-      if (res.ok) {
-        const data = await res.json();
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text();
+        console.error('[ADMIN AUTH] Non-JSON response received:', text.substring(0, 100));
+        throw new Error(`Server returned non-JSON response (${res.status}). This usually means the server is misconfigured or crashing.`);
+      }
+
+      const data = await res.json();
+      console.log("OTP verify response:", data);
+      clearTimeout(timeoutId);
+
+      if (res.ok && data.success) {
         setIsVerified(true);
         setSessionId(data.sessionId);
         sessionStorage.setItem('admin_verified', 'true');
         localStorage.setItem('admin_session_id', data.sessionId);
+        localStorage.setItem('adminSession', data.sessionId); // User requested specific key
         setLastActivity(Date.now());
         toast.success('Admin access granted');
         await logAdminAction(ADMIN_EMAIL, 'otp_verification', 'success');
+        
+        // Return success for frontend navigation if needed
+        return { success: true };
       } else {
-        const data = await res.json();
         toast.error(data.error || 'Invalid or expired code');
         await logAdminAction(ADMIN_EMAIL, 'otp_verification', 'failed', data.error);
+        return { success: false, error: data.error };
       }
     } catch (error) {
+      console.error('[ADMIN AUTH] Verification error:', error);
       toast.error('Verification failed');
+      return { success: false, error: 'Network error' };
     } finally {
+      clearTimeout(timeoutId);
       setIsLoading(false);
     }
   };

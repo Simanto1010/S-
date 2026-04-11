@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Shield, Lock, Key, ArrowRight, Loader2, LogOut } from 'lucide-react';
 import { auth } from '../firebase';
@@ -9,6 +10,7 @@ interface AdminGuardProps {
 }
 
 export default function AdminGuard({ children }: AdminGuardProps) {
+  const navigate = useNavigate();
   const { 
     isVerified, isOtpSent, isLoading, sendOtp, 
     verifyOtp, isAdminEmail, maskedEmail, resendCooldown,
@@ -16,6 +18,16 @@ export default function AdminGuard({ children }: AdminGuardProps) {
   } = useAdminAuth();
   const [otp, setOtp] = useState('');
   const [hasAdminRole, setHasAdminRole] = React.useState<boolean | null>(null);
+
+  const handleVerify = async () => {
+    const result = await verifyOtp(otp);
+    if (result?.success) {
+      // Small delay to allow state to sync before navigation
+      setTimeout(() => {
+        navigate("/admin/dashboard");
+      }, 100);
+    }
+  };
 
   React.useEffect(() => {
     const checkRole = async () => {
@@ -78,7 +90,10 @@ export default function AdminGuard({ children }: AdminGuardProps) {
               className="w-full py-4 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all group"
             >
               {isLoading ? (
-                <Loader2 className="animate-spin" size={20} />
+                <div className="flex items-center gap-2">
+                  <Loader2 className="animate-spin" size={20} />
+                  <span>Sending OTP...</span>
+                </div>
               ) : (
                 <>
                   Send Verification Code
@@ -120,12 +135,15 @@ export default function AdminGuard({ children }: AdminGuardProps) {
               
               <div className="pt-4">
                 <button
-                  onClick={() => verifyOtp(otp)}
+                  onClick={handleVerify}
                   disabled={isLoading || otp.length !== 6}
                   className="w-full py-4 bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-black font-bold rounded-2xl flex items-center justify-center gap-2 transition-all"
                 >
                   {isLoading ? (
-                    <Loader2 className="animate-spin" size={20} />
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="animate-spin" size={20} />
+                      <span>Verifying...</span>
+                    </div>
                   ) : (
                     'Verify & Access'
                   )}

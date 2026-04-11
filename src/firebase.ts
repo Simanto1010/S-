@@ -10,7 +10,6 @@ import {
   deleteDoc, addDoc, getDocs, orderBy, limit, Firestore,
   setLogLevel
 } from 'firebase/firestore';
-import { toast } from 'sonner';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Suppress benign internal SDK logs (like idle stream timeouts)
@@ -47,7 +46,6 @@ try {
   console.log(`[Firebase] Connected to ${firebaseConfig.projectId}`);
 } catch (error) {
   console.error('[Firebase] Initialization Failed:', error);
-  toast.error('Firebase connection failed. Some features may be unavailable.');
   // Provide dummy objects to prevent top-level crashes
   // These will fail when used, but won't stop the app from mounting
   app = {} as any;
@@ -147,6 +145,8 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 export const logAdminAction = async (email: string, actionType: string, status: 'success' | 'failed' | 'denied', details?: string) => {
+  if (typeof window === 'undefined') return;
+  
   try {
     const deviceInfo = {
       userAgent: navigator.userAgent,
