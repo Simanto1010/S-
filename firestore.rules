@@ -210,7 +210,7 @@ service cloud.firestore {
 
     match /activityLogs/{logId} {
       allow read: if isAuthenticated() && (isUserOwned(resource.data) || isAdmin() || resource.data.category == 'system');
-      allow create: if isAuthenticated() && (isUserOwned(request.resource.data) || request.resource.data.userId == 'system');
+      allow create: if isAuthenticated() && (isUserOwned(request.resource.data) || request.resource.data.userId == 'system' || isAdmin());
     }
 
     match /subscriptions/{userId} {

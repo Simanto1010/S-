@@ -1,7 +1,6 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { fileURLToPath } from "url";
 import { Server } from "socket.io";
 import { v4 as uuidv4 } from "uuid";
 import http from "http";
@@ -10,8 +9,6 @@ import { SaaSService } from "./src/services/saasService";
 import { AutonomousAgent } from "./src/services/autonomousAgent";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
 
 async function startServer() {
   const app = express();

@@ -1,5 +1,5 @@
-import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType, auth } from '../firebase';
+import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, Timestamp, doc, setDoc } from 'firebase/firestore';
 
 export interface ActivityLog {
   id?: string;
@@ -13,16 +13,27 @@ export interface ActivityLog {
 
 export class ActivityLogService {
   static async log(userId: string, action: string, type: ActivityLog['type'], category: ActivityLog['category'], details?: any) {
+    // Skip logging if not authenticated to avoid permission errors
+    if (!auth.currentUser && category !== 'system') return;
+
     try {
-      await addDoc(collection(db, 'activityLogs'), {
+      // Use doc() + setDoc() with merge to make the operation idempotent
+      // and prevent "Document already exists" errors during network retries
+      const logRef = doc(collection(db, 'activityLogs'));
+      await setDoc(logRef, {
         userId,
         action,
         type,
         category,
         details: details || {},
         timestamp: serverTimestamp()
-      });
-    } catch (err) {
+      }, { merge: true });
+    } catch (err: any) {
+      // If it's still an "already exists" error, we can safely ignore it as it means the log is already there
+      if (err?.code === 'already-exists' || err?.message?.includes('already exists')) {
+        console.warn('Activity log already exists (likely a retry):', action);
+        return;
+      }
       console.error('Failed to log activity:', err);
     }
   }
