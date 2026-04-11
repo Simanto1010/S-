@@ -157,6 +157,13 @@ async function startServer() {
       }
     }
 
+    // 4. Admin Whitelist (Senior Patch)
+    const ADMIN_EMAIL = "mbidhan474@gmail.com";
+    if (email === ADMIN_EMAIL) {
+      score = Math.max(score - 50, 0);
+      console.log(`[ADMIN SECURITY] Admin whitelist applied for ${email}. Reduced score to ${score}`);
+    }
+
     score = Math.min(score, 100);
     let level: 'LOW' | 'MEDIUM' | 'HIGH' = 'LOW';
     
@@ -178,8 +185,8 @@ async function startServer() {
       return false;
     }
 
-    // Log threat
-    await addDoc(collection(db, 'adminThreats'), {
+    // Log threat (Non-blocking)
+    addDoc(collection(db, 'adminThreats'), {
       email,
       riskScore: risk.score,
       riskLevel: risk.level,
@@ -188,51 +195,53 @@ async function startServer() {
       ip: context.ip,
       details: risk.reasons.join(', '),
       timestamp: new Date().toISOString()
-    });
+    }).catch(err => console.error("[ADMIN SECURITY] Failed to log threat:", err));
 
-    // Email Alert
+    // Email Alert (Non-blocking)
     if (risk.level !== 'LOW') {
-      try {
-        const nodemailer = await import('nodemailer');
-        const smtpPort = Number(process.env.SMTP_PORT) || 465;
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST || 'smtp.gmail.com',
-          port: smtpPort,
-          secure: smtpPort === 465,
-          auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-          tls: { rejectUnauthorized: false }
-        });
+      (async () => {
+        try {
+          const nodemailer = await import('nodemailer');
+          const smtpPort = Number(process.env.SMTP_PORT) || 465;
+          const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST || 'smtp.gmail.com',
+            port: smtpPort,
+            secure: smtpPort === 465,
+            auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+            tls: { rejectUnauthorized: false }
+          });
 
-        const subject = risk.level === 'HIGH' ? "⚠️ CRITICAL: High Risk Admin Activity Detected" : "⚠️ WARNING: Suspicious Admin Activity";
-        const message = `
-          AI Security Monitor detected ${risk.level} risk activity.
-          
-          Risk Score: ${risk.score}/100
-          Level: ${risk.level}
-          Reasons: ${risk.reasons.join(', ')}
-          
-          Device: ${context.userAgent}
-          IP: ${context.ip}
-          Time: ${new Date().toLocaleString()}
-          
-          Action Taken: ${risk.level === 'HIGH' ? 'Session terminated and account blocked for 10 minutes.' : 'Warning issued and OTP re-verification required.'}
-        `;
+          const subject = risk.level === 'HIGH' ? "⚠️ CRITICAL: High Risk Admin Activity Detected" : "⚠️ WARNING: Suspicious Admin Activity";
+          const message = `
+            AI Security Monitor detected ${risk.level} risk activity.
+            
+            Risk Score: ${risk.score}/100
+            Level: ${risk.level}
+            Reasons: ${risk.reasons.join(', ')}
+            
+            Device: ${context.userAgent}
+            IP: ${context.ip}
+            Time: ${new Date().toLocaleString()}
+            
+            Action Taken: ${risk.level === 'HIGH' ? 'Session terminated and account blocked for 10 minutes.' : 'Warning issued and OTP re-verification required.'}
+          `;
 
-        await transporter.sendMail({
-          from: `"AI Security Monitor" <${process.env.SMTP_USER}>`,
-          to: "mbidhan474@gmail.com",
-          subject,
-          text: message
-        });
-      } catch (e) {
-        console.error("Failed to send threat alert email:", e);
-      }
+          await transporter.sendMail({
+            from: `"AI Security Monitor" <${process.env.SMTP_USER}>`,
+            to: "mbidhan474@gmail.com",
+            subject,
+            text: message
+          });
+        } catch (e) {
+          console.error("Failed to send threat alert email:", e);
+        }
+      })();
     }
 
     if (risk.level === 'HIGH') {
       // Block for 10 minutes
       const securityRef = doc(db, 'adminSecurity', email);
-      await setDoc(securityRef, {
+      const blockPromise = setDoc(securityRef, {
         isBlockedUntil: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
         lastRiskScore: risk.score
       }, { merge: true });
@@ -241,7 +250,8 @@ async function startServer() {
       const sessionsQuery = query(collection(db, 'adminSessions'), where('email', '==', email), where('isValid', '==', true));
       const activeSessions = await getDocs(sessionsQuery);
       const invalidatePromises = activeSessions.docs.map(d => updateDoc(doc(db, 'adminSessions', d.id), { isValid: false }));
-      await Promise.all(invalidatePromises);
+      
+      await Promise.all([blockPromise, ...invalidatePromises]);
       
       return true;
     }
@@ -458,9 +468,10 @@ async function startServer() {
               updateData.isBlockedUntil = new Date(now.getTime() + 10 * 60 * 1000).toISOString();
             }
 
-            await setDoc(securityRef, updateData, { merge: true });
+            // Non-blocking security update and logging
+            setDoc(securityRef, updateData, { merge: true }).catch(err => console.error("[ADMIN OTP] Failed to update security state:", err));
             
-            await addDoc(collection(db, 'adminLogs'), {
+            addDoc(collection(db, 'adminLogs'), {
               email,
               actionType: 'login_failure',
               status: 'failed',
@@ -468,7 +479,7 @@ async function startServer() {
               device: deviceInfo?.userAgent || 'Unknown',
               ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
               timestamp: now.toISOString()
-            });
+            }).catch(err => console.error("[ADMIN OTP] Failed to log failure:", err));
 
             return res.status(400).json({ 
               error: `Invalid code. ${5 - newFailedAttempts} attempts remaining.` 
@@ -477,7 +488,7 @@ async function startServer() {
 
           if (now > expiresAt) {
             console.warn(`[ADMIN OTP] OTP expired for ${email}`);
-            await deleteDoc(doc(db, 'admin_otps', otpDoc.id));
+            deleteDoc(doc(db, 'admin_otps', otpDoc.id)).catch(err => console.error("[ADMIN OTP] Failed to delete expired OTP:", err));
             return res.status(400).json({ error: "Verification code has expired. Please request a new one." });
           }
 
@@ -493,16 +504,16 @@ async function startServer() {
           const isDev = process.env.NODE_ENV !== 'production';
           let wasTerminated = false;
           
+          // DO NOT trigger block if OTP is correct (Senior Patch)
+          console.log(`[ADMIN OTP] OTP verified for ${email}. Bypassing all risk-based blocking.`);
+          wasTerminated = false; 
+          
           if (!isDev) {
-            // Only consider blocking if NOT in dev mode
-            // Even in production, if OTP is correct, we might want to be more lenient
-            // but the user requested: "If OTP verified = TRUE -> SKIP risk-based blocking"
-            console.log(`[ADMIN OTP] OTP verified for ${email}. Skipping risk-based blocking trigger.`);
-            wasTerminated = false; // FORCE PASS as requested
-            
             // Still log the threat if risk is high, but don't block
             if (risk.level === 'HIGH' || risk.level === 'MEDIUM') {
-               await handleThreatResponse(email, risk, { userAgent: deviceInfo?.userAgent, ip }, db, { collection, addDoc, doc, setDoc, updateDoc, query, where, getDocs });
+               // Non-blocking threat handling
+               handleThreatResponse(email, risk, { userAgent: deviceInfo?.userAgent, ip }, db, { collection, addDoc, doc, setDoc, updateDoc, query, where, getDocs })
+                 .catch(err => console.error("[ADMIN OTP] Failed to handle threat response:", err));
             }
           } else {
             console.log(`[ADMIN OTP] DEV MODE: Skipping risk assessment blocking for ${email}`);
@@ -517,30 +528,27 @@ async function startServer() {
           const deviceSnap = await getDoc(deviceRef);
           const isNewDevice = !deviceSnap.exists();
 
-          // Track Device
-          await setDoc(deviceRef, {
+          // Track Device (Non-blocking)
+          setDoc(deviceRef, {
             email,
             deviceId,
             userAgent: deviceInfo?.userAgent,
             platform: deviceInfo?.platform,
             lastUsed: now.toISOString(),
             isTrusted: true
-          }, { merge: true });
+          }, { merge: true }).catch(err => console.error("[ADMIN OTP] Failed to track device:", err));
 
           // Single Session Management
           const sessionId = Math.random().toString(36).substring(2) + Date.now().toString(36);
           
-          // Invalidate old sessions
+          // Invalidate old sessions (Non-blocking)
           if (securityData.activeSessionId) {
             const oldSessionRef = doc(db, 'adminSessions', securityData.activeSessionId);
-            const oldSessionSnap = await getDoc(oldSessionRef);
-            if (oldSessionSnap.exists()) {
-              await updateDoc(oldSessionRef, { isValid: false });
-            }
+            updateDoc(oldSessionRef, { isValid: false }).catch(err => console.warn("[ADMIN OTP] Failed to invalidate old session:", err));
           }
 
           // Create new session
-          await setDoc(doc(db, 'adminSessions', sessionId), {
+          const sessionPromise = setDoc(doc(db, 'adminSessions', sessionId), {
             email,
             sessionId,
             deviceId,
@@ -550,7 +558,7 @@ async function startServer() {
           });
 
           // Update security state
-          await setDoc(securityRef, {
+          const securityPromise = setDoc(securityRef, {
             email,
             failedAttempts: 0,
             isBlockedUntil: null,
@@ -559,10 +567,10 @@ async function startServer() {
           }, { merge: true });
 
           // Cleanup used OTP
-          await deleteDoc(doc(db, 'admin_otps', otpDoc.id));
+          const cleanupPromise = deleteDoc(doc(db, 'admin_otps', otpDoc.id));
           
           // Log Success
-          await addDoc(collection(db, 'adminLogs'), {
+          const logPromise = addDoc(collection(db, 'adminLogs'), {
             email,
             actionType: 'login_success',
             status: 'success',
@@ -571,6 +579,8 @@ async function startServer() {
             ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
             timestamp: now.toISOString()
           });
+
+          await Promise.all([sessionPromise, securityPromise, cleanupPromise, logPromise]);
 
           // Send Login Alert Email (Enhanced for Level 3)
           // We don't await this to keep response fast
@@ -871,6 +881,41 @@ if __name__ == "__main__":
     }
     next(err);
   });
+
+  // 5. Subscription Expiry System (Daily Check)
+  async function runSubscriptionExpiryCheck() {
+    console.log("[SUBSCRIPTION] Running daily expiry check...");
+    try {
+      const subsQuery = query(
+        collection(db, 'subscriptions'), 
+        where('plan', '==', 'pro'),
+        where('status', 'in', ['active', 'trialing'])
+      );
+      const subsSnap = await getDocs(subsQuery);
+      const now = new Date();
+      let downgradedCount = 0;
+
+      for (const subDoc of subsSnap.docs) {
+        const data = subDoc.data();
+        if (data.currentPeriodEnd) {
+          const expiryDate = new Date(data.currentPeriodEnd);
+          if (expiryDate < now) {
+            // Downgrade using SaaSService
+            await SaaSService.checkExpiry(subDoc.id);
+            downgradedCount++;
+            console.log(`[SUBSCRIPTION] Downgraded user ${subDoc.id} due to expiry.`);
+          }
+        }
+      }
+      console.log(`[SUBSCRIPTION] Expiry check completed. Downgraded ${downgradedCount} users.`);
+    } catch (err) {
+      console.error("[SUBSCRIPTION] Expiry check failed:", err);
+    }
+  }
+
+  // Run on start and then every 24 hours
+  runSubscriptionExpiryCheck();
+  setInterval(runSubscriptionExpiryCheck, 24 * 60 * 60 * 1000);
 
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);

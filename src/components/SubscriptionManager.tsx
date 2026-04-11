@@ -162,6 +162,7 @@ export default function SubscriptionManager({ user }: SubscriptionManagerProps) 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active': return <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-xs rounded-full border border-emerald-500/30">Active</span>;
+      case 'trialing': return <span className="px-2 py-1 bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/30">Free Trial</span>;
       case 'pending_verification': return <span className="px-2 py-1 bg-amber-500/20 text-amber-400 text-xs rounded-full border border-amber-500/30">Pending Verification</span>;
       case 'rejected': return <span className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded-full border border-red-500/30">Rejected</span>;
       default: return <span className="px-2 py-1 bg-white/10 text-white/60 text-xs rounded-full border border-white/5">{status}</span>;
@@ -188,9 +189,11 @@ export default function SubscriptionManager({ user }: SubscriptionManagerProps) 
               {subscription && getStatusBadge(subscription.status)}
             </div>
             <p className="text-xs text-white/40 mt-1">
-              {subscription?.currentPeriodEnd 
-                ? `Renews on ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
-                : 'Lifetime access to basic features'}
+              {subscription?.status === 'trialing' 
+                ? `Trial ends on ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
+                : subscription?.currentPeriodEnd 
+                  ? `Renews on ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}`
+                  : 'Lifetime access to basic features'}
             </p>
             {subscription?.plan === PlanType.PRO && !subscription?.cancelAtPeriodEnd && (
               <button 

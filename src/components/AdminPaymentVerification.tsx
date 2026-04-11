@@ -31,8 +31,146 @@ export default function AdminPaymentVerification() {
   const [adminLogs, setAdminLogs] = useState<any[]>([]);
   const [trustedDevices, setTrustedDevices] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'payments' | 'security'>('payments');
+  const [isActionLoading, setIsActionLoading] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState<{ id: string, type: 'approve' | 'reject' | 'bulk_approve' } | null>(null);
+  const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
 
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  const validateAdminSession = async () => {
+    if (!sessionId) return false;
+    try {
+      const res = await fetch('/api/admin/validate-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, email: 'mbidhan474@gmail.com' })
+      });
+      return res.ok;
+    } catch (err) {
+      return false;
+    }
+  };
+
+  const handleApprove = async (request: any) => {
+    setIsActionLoading(request.id);
+    try {
+      // Security Check
+      const isValid = await validateAdminSession();
+      if (!isValid) {
+        toast.error("Session expired. Please login again.");
+        logout();
+        return;
+      }
+
+      // 1. Update Payment Request
+      await updateDoc(doc(db, 'paymentRequests', request.id), {
+        status: 'approved',
+        verifiedAt: serverTimestamp()
+      });
+
+      // 2. Update User Subscription
+      const subRef = doc(db, 'subscriptions', request.userId);
+      const subSnap = await getDoc(subRef);
+      
+      const currentPeriodEnd = new Date();
+      if (request.planType === 'monthly') {
+        currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
+      } else {
+        currentPeriodEnd.setFullYear(currentPeriodEnd.getFullYear() + 1);
+      }
+
+      await updateDoc(subRef, {
+        plan: PlanType.PRO,
+        status: 'active',
+        paymentMethod: 'upi',
+        currentPeriodEnd: currentPeriodEnd.toISOString(),
+        features: PLAN_LIMITS[PlanType.PRO],
+        lastTransactionId: request.transactionId,
+        updatedAt: serverTimestamp()
+      });
+
+      // 3. Log Action
+      await logAdminAction('mbidhan474@gmail.com', 'payment_approved', 'success', `Approved payment for ${request.userName} (₹${request.amount})`);
+
+      ActivityLogService.log(request.userId, `Payment approved by admin: ${request.transactionId}`, 'success', 'payment');
+      toast.success(`Payment approved for ${request.userName}`);
+    } catch (err) {
+      console.error("Failed to approve payment:", err);
+      toast.error("Action failed, try again");
+    } finally {
+      setIsActionLoading(null);
+      setShowConfirm(null);
+    }
+  };
+
+  const handleReject = async (request: any) => {
+    setIsActionLoading(request.id);
+    try {
+      // Security Check
+      const isValid = await validateAdminSession();
+      if (!isValid) {
+        toast.error("Session expired. Please login again.");
+        logout();
+        return;
+      }
+
+      await updateDoc(doc(db, 'paymentRequests', request.id), {
+        status: 'rejected',
+        verifiedAt: serverTimestamp()
+      });
+
+      // Reset subscription status if it was pending
+      const subRef = doc(db, 'subscriptions', request.userId);
+      await updateDoc(subRef, {
+        status: 'active' // Revert to active (usually free plan)
+      });
+
+      // 2. Log Action
+      await logAdminAction('mbidhan474@gmail.com', 'payment_rejected', 'success', `Rejected payment for ${request.userName} (₹${request.amount})`);
+
+      ActivityLogService.log(request.userId, `Payment rejected by admin: ${request.transactionId}`, 'error', 'payment');
+      toast.success(`Payment rejected for ${request.userName}`);
+    } catch (err) {
+      console.error("Failed to reject payment:", err);
+      toast.error("Action failed, try again");
+    } finally {
+      setIsActionLoading(null);
+      setShowConfirm(null);
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (selectedRequests.length === 0) return;
+    setIsActionLoading('bulk');
+    try {
+      const isValid = await validateAdminSession();
+      if (!isValid) {
+        toast.error("Session expired. Please login again.");
+        logout();
+        return;
+      }
+
+      const promises = selectedRequests.map(async (id) => {
+        const req = requests.find(r => r.id === id);
+        if (req) return handleApprove(req);
+      });
+
+      await Promise.all(promises);
+      toast.success(`Bulk approved ${selectedRequests.length} payments`);
+      setSelectedRequests([]);
+    } catch (err) {
+      toast.error("Bulk action failed");
+    } finally {
+      setIsActionLoading(null);
+      setShowConfirm(null);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedRequests(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
 
   useEffect(() => {
     // Fetch security info for UI
@@ -77,70 +215,6 @@ export default function AdminPaymentVerification() {
       unsubDevices();
     };
   }, [filter]);
-
-  const handleApprove = async (request: any) => {
-    try {
-      // 1. Update Payment Request
-      await updateDoc(doc(db, 'paymentRequests', request.id), {
-        status: 'approved',
-        verifiedAt: serverTimestamp()
-      });
-
-      // 2. Update User Subscription
-      const subRef = doc(db, 'subscriptions', request.userId);
-      const subSnap = await getDoc(subRef);
-      
-      const currentPeriodEnd = new Date();
-      if (request.planType === 'monthly') {
-        currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
-      } else {
-        currentPeriodEnd.setFullYear(currentPeriodEnd.getFullYear() + 1);
-      }
-
-      await updateDoc(subRef, {
-        plan: PlanType.PRO,
-        status: 'active',
-        paymentMethod: 'upi',
-        currentPeriodEnd: currentPeriodEnd.toISOString(),
-        features: PLAN_LIMITS[PlanType.PRO],
-        lastTransactionId: request.transactionId,
-        updatedAt: serverTimestamp()
-      });
-
-      // 3. Log Action
-      await logAdminAction('mbidhan474@gmail.com', 'payment_approve', 'success', `Approved payment for ${request.userName} (₹${request.amount})`);
-
-      ActivityLogService.log(request.userId, `Payment approved by admin: ${request.transactionId}`, 'success', 'payment');
-      toast.success(`Payment approved for ${request.userName}`);
-    } catch (err) {
-      console.error("Failed to approve payment:", err);
-      toast.error("Failed to approve payment");
-    }
-  };
-
-  const handleReject = async (request: any) => {
-    try {
-      await updateDoc(doc(db, 'paymentRequests', request.id), {
-        status: 'rejected',
-        verifiedAt: serverTimestamp()
-      });
-
-      // Reset subscription status if it was pending
-      const subRef = doc(db, 'subscriptions', request.userId);
-      await updateDoc(subRef, {
-        status: 'active' // Revert to active (usually free plan)
-      });
-
-      // 2. Log Action
-      await logAdminAction('mbidhan474@gmail.com', 'payment_reject', 'success', `Rejected payment for ${request.userName} (₹${request.amount})`);
-
-      ActivityLogService.log(request.userId, `Payment rejected by admin: ${request.transactionId}`, 'error', 'payment');
-      toast.success(`Payment rejected for ${request.userName}`);
-    } catch (err) {
-      console.error("Failed to reject payment:", err);
-      toast.error("Failed to reject payment");
-    }
-  };
 
   return (
     <div className="space-y-8 max-w-6xl mx-auto p-4 lg:p-8">
@@ -203,6 +277,15 @@ export default function AdminPaymentVerification() {
 
           {activeTab === 'payments' && (
             <div className="flex items-center gap-2 bg-white/5 p-1 rounded-xl border border-white/5">
+              {selectedRequests.length > 0 && filter === 'pending' && (
+                <button
+                  onClick={() => setShowConfirm({ id: 'bulk', type: 'bulk_approve' })}
+                  className="px-4 py-2 text-xs font-bold rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-all flex items-center gap-2 mr-2"
+                >
+                  <Sparkles size={14} />
+                  Approve Selected ({selectedRequests.length})
+                </button>
+              )}
               {(['pending', 'approved', 'rejected'] as const).map((f) => (
                 <button
                   key={f}
@@ -234,14 +317,26 @@ export default function AdminPaymentVerification() {
               <p className="text-white/40">Everything is up to date</p>
             </div>
           ) : (
-            requests.map((req) => (
+              requests.map((req) => (
               <motion.div
                 key={req.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-[#0a0a0a] border border-white/5 rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 hover:border-white/10 transition-colors"
+                className={`bg-[#0a0a0a] border rounded-2xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 transition-all ${
+                  selectedRequests.includes(req.id) ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-white/5 hover:border-white/10'
+                }`}
               >
                 <div className="flex items-center gap-4">
+                  {filter === 'pending' && (
+                    <button 
+                      onClick={() => toggleSelect(req.id)}
+                      className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${
+                        selectedRequests.includes(req.id) ? 'bg-cyan-500 border-cyan-500' : 'border-white/20 hover:border-white/40'
+                      }`}
+                    >
+                      {selectedRequests.includes(req.id) && <CheckCircle size={12} className="text-white" />}
+                    </button>
+                  )}
                   <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center border border-white/10">
                     <User className="w-6 h-6 text-white/40" />
                   </div>
@@ -296,17 +391,19 @@ export default function AdminPaymentVerification() {
                   {filter === 'pending' ? (
                     <>
                       <button
-                        onClick={() => handleReject(req)}
-                        className="flex-1 md:flex-none px-6 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-xl font-bold text-sm transition-all border border-red-500/20 flex items-center justify-center gap-2"
+                        onClick={() => setShowConfirm({ id: req.id, type: 'reject' })}
+                        disabled={isActionLoading === req.id}
+                        className="flex-1 md:flex-none px-6 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-xl font-bold text-sm transition-all border border-red-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
                       >
-                        <XCircle className="w-4 h-4" />
+                        {isActionLoading === req.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
                         Reject
                       </button>
                       <button
-                        onClick={() => handleApprove(req)}
-                        className="flex-1 md:flex-none px-6 py-2 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-xl font-bold text-sm transition-all border border-emerald-500/20 flex items-center justify-center gap-2"
+                        onClick={() => setShowConfirm({ id: req.id, type: 'approve' })}
+                        disabled={isActionLoading === req.id}
+                        className="flex-1 md:flex-none px-6 py-2 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-xl font-bold text-sm transition-all border border-emerald-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
                       >
-                        <CheckCircle className="w-4 h-4" />
+                        {isActionLoading === req.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                         Approve
                       </button>
                     </>
@@ -529,6 +626,65 @@ export default function AdminPaymentVerification() {
       )}
 
       <AnimatePresence>
+        {showConfirm && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isActionLoading && setShowConfirm(null)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative bg-[#0a0a0a] border border-white/10 rounded-3xl p-8 max-w-md w-full shadow-2xl"
+            >
+              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-6 mx-auto ${
+                showConfirm.type === 'approve' || showConfirm.type === 'bulk_approve' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+              }`}>
+                {showConfirm.type === 'approve' || showConfirm.type === 'bulk_approve' ? <CheckCircle size={32} /> : <XCircle size={32} />}
+              </div>
+              
+              <h3 className="text-2xl font-bold text-center mb-2">Are you sure?</h3>
+              <p className="text-white/40 text-center mb-8">
+                {showConfirm.type === 'bulk_approve' 
+                  ? `You are about to approve ${selectedRequests.length} payments at once. This action cannot be undone.`
+                  : `You are about to ${showConfirm.type} this payment request. The user will be notified immediately.`
+                }
+              </p>
+
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setShowConfirm(null)}
+                  disabled={!!isActionLoading}
+                  className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-xl font-bold text-sm transition-all border border-white/10 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    if (showConfirm.type === 'bulk_approve') {
+                      handleBulkApprove();
+                    } else {
+                      const req = requests.find(r => r.id === showConfirm.id);
+                      if (showConfirm.type === 'approve') handleApprove(req);
+                      else handleReject(req);
+                    }
+                  }}
+                  disabled={!!isActionLoading}
+                  className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
+                    showConfirm.type === 'approve' || showConfirm.type === 'bulk_approve' ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-red-500 text-white hover:bg-red-600'
+                  }`}
+                >
+                  {isActionLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Confirm'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {selectedImage && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div

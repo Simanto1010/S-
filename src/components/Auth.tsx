@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   auth, googleProvider, signInWithPopup, 
   createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  updateProfile, sendEmailVerification
+  updateProfile, sendEmailVerification,
+  db, doc, setDoc, serverTimestamp
 } from '../firebase';
 import { Globe, Mail, Lock, User, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -65,6 +66,17 @@ export default function Auth() {
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await updateProfile(userCredential.user, { displayName: name });
+        
+        // Create user document in Firestore (Senior Patch)
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          uid: userCredential.user.uid,
+          displayName: name,
+          email: userCredential.user.email,
+          createdAt: serverTimestamp(),
+          plan: 'free',
+          role: 'user'
+        });
+
         await sendEmailVerification(userCredential.user);
         ActivityLogService.log(userCredential.user.uid, 'New user registered', 'success', 'auth');
         toast.success('Account created. Verification email sent.');

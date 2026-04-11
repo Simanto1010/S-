@@ -408,19 +408,9 @@ export default function App() {
         const isRoleAdmin = userData?.role === 'admin';
         setIsAdmin(isEmailAdmin && isRoleAdmin);
 
-        // Initialize subscription if not exists
-        const subRef = doc(db, 'subscriptions', firebaseUser.uid);
-        const subSnap = await getDoc(subRef);
-        if (!subSnap.exists()) {
-          await setDoc(subRef, {
-            userId: firebaseUser.uid,
-            plan: PlanType.FREE,
-            status: 'active',
-            features: PLAN_LIMITS[PlanType.FREE],
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
-        }
+        // Initialize subscription if not exists (Senior Patch)
+        await SaaSService.getUserSubscription(firebaseUser.uid);
+        
         setUser(firebaseUser);
       } else {
         setUser(null);

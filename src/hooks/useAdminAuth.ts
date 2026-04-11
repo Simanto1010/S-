@@ -46,14 +46,14 @@ export function useAdminAuth() {
 
     setIsLoading(true);
     
-    // 10-second timeout for sending OTP
+    // 5-second timeout for sending OTP (Senior Patch)
     const timeoutId = setTimeout(() => {
       if (isLoading) {
         setIsLoading(false);
         toast.error('Request timed out. Please check your connection.');
-        console.warn('[ADMIN AUTH] sendOtp timed out after 10s');
+        console.warn('[ADMIN AUTH] sendOtp timed out after 5s');
       }
-    }, 10000);
+    }, 5000);
 
     try {
       console.log('[ADMIN AUTH] Requesting OTP for:', ADMIN_EMAIL);
@@ -348,7 +348,13 @@ export function useAdminAuth() {
         
         setAiRecommendations(JSON.parse(response.text));
       } catch (e) {
-        console.error("Failed to generate AI recommendations:", e);
+        console.error("Failed to generate AI recommendations, using fallback:", e);
+        // Senior Patch: Gemini Fallback System
+        setAiRecommendations([
+          "Check login activity",
+          "Verify device identity",
+          "Reset password if suspicious"
+        ]);
       }
     };
 

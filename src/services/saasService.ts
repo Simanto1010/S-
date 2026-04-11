@@ -45,19 +45,42 @@ export class SaaSService {
     const subSnap = await getDoc(subRef);
     
     if (!subSnap.exists()) {
-      // Default to free plan
+      // Default to free plan with 7-day PRO trial (Senior Patch)
+      const trialEnd = new Date();
+      trialEnd.setDate(trialEnd.getDate() + 7);
+      
       const defaultSub = {
         userId,
-        plan: PlanType.FREE,
-        status: 'active',
+        plan: PlanType.PRO, // Start with PRO trial
+        status: 'trialing',
         createdAt: serverTimestamp(),
-        features: PLAN_LIMITS[PlanType.FREE]
+        currentPeriodEnd: trialEnd.toISOString(),
+        features: PLAN_LIMITS[PlanType.PRO],
+        isTrialUsed: true
       };
       await setDoc(subRef, defaultSub);
+      
+      // Also update user document
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        plan: PlanType.PRO,
+        expiryDate: trialEnd.toISOString()
+      }).catch(() => {}); // Ignore if user doc doesn't exist yet
+
       return defaultSub;
     }
     
-    return subSnap.data();
+    const data = subSnap.data();
+    // Check for expiry on every fetch to ensure real-time accuracy
+    if (data.plan === PlanType.PRO && data.currentPeriodEnd) {
+      const expiryDate = new Date(data.currentPeriodEnd);
+      if (expiryDate < new Date()) {
+        await this.checkExpiry(userId);
+        return (await getDoc(subRef)).data();
+      }
+    }
+
+    return data;
   }
 
   static async verifyPaymentWithAI(screenshotBase64: string, expectedAmount: number) {
